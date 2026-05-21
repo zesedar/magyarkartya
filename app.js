@@ -1,7 +1,7 @@
 const STORAGE_KEY = "magyar-passziansz-v3";
 const HISTORY_LIMIT = 80;
 
-const APP_VERSION = "kártyaképes v3";
+const APP_VERSION = "mobilra optimalizált v4";
 const CARD_ASSET_DIR = "assets/cards-large";
 
 const SUITS = [
@@ -424,11 +424,11 @@ function renderCard(card, options = {}) {
 function renderStock() {
   const stockTop = state.stock.length > 0
     ? renderCard({ faceUp: false }, { click: 'onclick="drawFromStock()"' })
-    : `<div class="card-slot ${state.waste.length ? "highlight" : ""}">Üres húzópakli</div>`;
+    : `<button class="card-slot empty-stock ${state.waste.length ? "highlight" : ""}" onclick="drawFromStock()" ${state.waste.length ? "" : "disabled"}>${state.waste.length ? "Vissza" : "Üres"}</button>`;
 
   return `
     <section>
-      <p class="pile-label">Húzópakli · ${state.stock.length} lap</p>
+      <p class="pile-label">Húzó · ${state.stock.length}</p>
       ${stockTop}
       <div class="stock-actions">
         <button class="btn" onclick="drawFromStock()">${state.stock.length ? "Húzás" : "Visszaforgat"}</button>
@@ -441,10 +441,10 @@ function renderWaste() {
   const card = state.waste[state.waste.length - 1];
   return `
     <section>
-      <p class="pile-label">Dobópakli · ${state.waste.length} lap</p>
+      <p class="pile-label">Dobó · ${state.waste.length}</p>
       ${card
         ? renderCard(card, { click: "onclick=\"selectFromWaste()\"" })
-        : `<div class="card-slot">Még nincs húzott lap</div>`}
+        : `<div class="card-slot">Üres</div>`}
     </section>
   `;
 }
@@ -458,7 +458,7 @@ function renderFoundation(suit) {
     <section>
       <p class="pile-label">${suit.name} · ${nextRank}</p>
       <div class="card-slot foundation-slot ${highlight}" onclick="moveToFoundation('${suit.id}')">
-        ${top ? renderCard(top, { click: `onclick=\"event.stopPropagation(); selectFromFoundation('${suit.id}')\"` }) : `${suit.icon}<br>${suit.name} VII`}
+        ${top ? renderCard(top, { click: `onclick=\"event.stopPropagation(); selectFromFoundation('${suit.id}')\"` }) : `<span class="foundation-empty"><span class="suit-icon">${suit.icon}</span><small>${suit.name}<br>VII</small></span>`}
       </div>
     </section>
   `;
@@ -474,7 +474,7 @@ function renderTableau() {
               extraClass: cardIndex ? "stack-card" : "",
               click: card.faceUp ? `onclick=\"event.stopPropagation(); selectFromTableau(${columnIndex}, ${cardIndex})\"` : "",
             })).join("")
-          : `<div class="column-empty-hint">Üres oszlop<br>ide Ász tehető</div>`;
+          : `<div class="column-empty-hint">Üres<br>Ász</div>`;
         return `
           <div class="column ${highlight}" onclick="moveToTableau(${columnIndex})" aria-label="${columnIndex + 1}. oszlop">
             ${cards}
@@ -493,7 +493,7 @@ function renderWinModal() {
         <p>Az összes magyar kártya a gyűjtőpaklikba került. Lépések: <strong>${state.moves}</strong>, idő: <strong>${formatTime(getElapsedSeconds())}</strong>.</p>
         <div class="modal-actions">
           <button class="btn" onclick="window.location.reload()">Bezárás</button>
-          <button class="btn primary" onclick="restartGame()">Új játék</button>
+          <button class="btn primary" onclick="restartGame()">Új</button>
         </div>
       </div>
     </div>
@@ -519,19 +519,19 @@ function render() {
           <p class="subtitle">32 lapos magyar kártyás passziánsz. Gyűjtsd fel színenként VII-től Ászig.</p>
         </div>
         <div class="toolbar">
-          <button class="btn primary" onclick="restartGame()">Új játék</button>
-          <button class="btn" onclick="undoMove()" ${state.history.length ? "" : "disabled"}>Visszavonás</button>
-          <button class="btn" onclick="autoMovePossibleFoundations()">Auto gyűjtés</button>
-          <button class="btn" onclick="toggleHelp()">Szabályok</button>
+          <button class="btn primary" onclick="restartGame()">Új</button>
+          <button class="btn" onclick="undoMove()" ${state.history.length ? "" : "disabled"}>Vissza</button>
+          <button class="btn" onclick="autoMovePossibleFoundations()">Auto</button>
+          <button class="btn" onclick="toggleHelp()" aria-label="Szabályok">?</button>
         </div>
       </header>
 
       ${renderInstallBanner()}
 
       <section class="stats" aria-label="Játékállapot">
-        <div class="stat-card"><span class="stat-label">Lépések</span><span class="stat-value">${state.moves}</span></div>
+        <div class="stat-card"><span class="stat-label">Lépés</span><span class="stat-value">${state.moves}</span></div>
         <div class="stat-card"><span class="stat-label">Idő</span><span class="stat-value" id="timer">${formatTime(getElapsedSeconds())}</span></div>
-        <div class="stat-card"><span class="stat-label">Gyűjtőben</span><span class="stat-value">${completed}/32</span></div>
+        <div class="stat-card"><span class="stat-label">Kész</span><span class="stat-value">${completed}/32</span></div>
         <div class="stat-card"><span class="stat-label">Kijelölés</span><span class="stat-value">${selected ? "van" : "nincs"}</span></div>
       </section>
 
@@ -616,7 +616,7 @@ window.installApp = installApp;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js?v=cards3", { updateViaCache: "none" })
+    navigator.serviceWorker.register("sw.js?v=mobile1", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(() => {
         console.info("A service worker regisztráció nem sikerült. Helyi file:// megnyitásnál ez normális.");

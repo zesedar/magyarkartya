@@ -1,9 +1,9 @@
-const CACHE_NAME = "magyar-passziansz-v3-card-images-20260521";
+const CACHE_NAME = "magyar-passziansz-v4-mobile-card-images-20260521";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=cards3",
-  "./app.js?v=cards3",
+  "./styles.css?v=mobile1",
+  "./app.js?v=mobile1",
   "./manifest.webmanifest",
   "./assets/icon-192.png",
   "./assets/icon-512.png",
