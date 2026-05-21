@@ -1,21 +1,26 @@
 # Magyar Passziánsz PWA
 
-Egy működő MVP magyar kártyás passziánszhoz, 32 lapos paklival, valódi magyar kártyalap képekkel, offline PWA támogatással és localStorage mentéssel.
+32 lapos magyar kártyás passziánsz valódi magyar kártyalap képekkel, offline PWA támogatással és localStorage mentéssel.
 
-## Mobilra optimalizált verzió
+## Aktuális fejlesztések
 
-Ez a csomag a korábbi kártyaképes verzió mobilra igazított változata.
+- Javított időmérés visszavonás után: az undo már nem nullázza / torzítja az eltelt időt.
+- A győzelmi modal bezárása már nem tölti újra az oldalt.
+- Automatikus mentés lapelrejtéskor / bezáráskor: `pagehide` és `visibilitychange` eseményekkel.
+- Az oszlopokban csökkenő sorrend mellett azonos szín nem kerülhet egymás alá.
+- Ranglista a 10 legjobb idővel, lépésszámmal és dátummal.
+- Statisztikák: nyert játszmák, győzelmi arány, legjobb idő, legkevesebb lépés.
+- A kártyaképek WebP formátumban kerültek be az optimalizált csomagba; az app ezeket használja.
+- Service worker cache javítás: képhibánál már nem ad vissza `index.html`-t képfájlként.
+- Mobilon is látható PWA telepítési banner, ha a böngésző támogatja.
 
-Fő változások:
+## Kivett funkciók
 
-- a 6 oszlop álló mobilképernyőn is egy sorban marad;
-- a kártyaképek arányosan kicsinyednek, nincs fix nagy minimummagasság;
-- a felső sáv rövidebb: `Új`, `Vissza`, `Auto`, `?`;
-- a hosszú leírás mobilon el van rejtve;
-- a statisztika kompaktabb;
-- a húzó, dobó és gyűjtőpaklik rövid címkéket kaptak;
-- a húzópakli üres állapotban közvetlenül a paklihelyre koppintva visszaforgatható;
-- a PWA cache verziója frissült: `magyar-passziansz-v5-foundation-click-fix-20260521`.
+- Seedelt / napi leosztás.
+- Tipp gomb.
+- Mobil kijelöltlap-előnézet.
+- Auto gomb.
+- `?` súgópanel.
 
 ## Szabályok
 
@@ -23,6 +28,7 @@ Fő változások:
 - A maradék 11 lap a húzópakliba kerül.
 - Gyűjtőpaklik: színenként VII-től Ászig.
 - Oszlopok: csökkenő sorrendben rakhatók, például Ász → Király → Felső → Alsó → X.
+- Azonos szín nem kerülhet közvetlenül egymás alá az oszlopokban.
 - Üres oszlopra csak Ász kerülhet.
 - A dobópakli korlátlanul visszaforgatható.
 
@@ -54,15 +60,13 @@ Utána teljes újratöltés: `Ctrl + Shift + R`.
 
 - `index.html` – belépési pont
 - `styles.css` – teljes reszponzív, mobilra optimalizált megjelenés
-- `app.js` – teljes játéklogika
+- `app.js` – teljes játéklogika egy fájlban
 - `manifest.webmanifest` – PWA manifest
 - `sw.js` – offline cache service worker
 - `assets/icon-192.png`, `assets/icon-512.png` – PWA ikonok
-- `assets/cards-large/*.png` – a magyar kártyalapok képei és a hátlap
+- `assets/cards-webp/*.webp` – optimalizált WebP kártyaképek, ezeket használja az app
 
 ## Kártyaképek
-
-A program a `assets/cards-large/` mappában lévő PNG-kre hivatkozik.
 
 Színek megfeleltetése:
 
@@ -81,13 +85,3 @@ Rangok megfeleltetése:
 - `ober` → Felső
 - `king` → Király
 - `ace` → Ász
-
-A `sw.js` ezeket a képeket is cache-eli, ezért a játék offline is valódi kártyaképekkel működik.
-
-## Következő fejlesztési ötletek
-
-- Álló/fekvő mobilnézet finomhangolása külön.
-- Nagyított kijelölési előnézet mobilon.
-- Drag & drop érintőképernyőn.
-- Nehézségi mód: piros/tök kontra zöld/makk váltott színszabály.
-- Statisztikák: nyert játszmák, átlagidő, legkevesebb lépés.

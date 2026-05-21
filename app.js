@@ -1,8 +1,10 @@
-const STORAGE_KEY = "magyar-passziansz-v3";
+const STORAGE_KEY = "magyar-passziansz-v4";
+const STATS_KEY = "magyar-passziansz-stats-v1";
 const HISTORY_LIMIT = 80;
+const LEADERBOARD_LIMIT = 10;
 
-const APP_VERSION = "mobilra optimalizált v5 – gyűjtőpakli kattintás javítva";
-const CARD_ASSET_DIR = "assets/cards-large";
+const CARD_ASSET_DIR = "assets/cards-webp";
+const CARD_ASSET_EXT = "webp";
 
 const SUITS = [
   { id: "piros", name: "Piros", icon: "♥", className: "red-suit", assetSuit: "heart" },
@@ -13,16 +15,21 @@ const SUITS = [
 
 const RANKS = ["VII", "VIII", "IX", "X", "Alsó", "Felső", "Király", "Ász"];
 const RANK_ASSET_NAMES = ["seven", "eight", "nine", "ten", "unter", "ober", "king", "ace"];
-const CARD_BACK_IMAGE = `${CARD_ASSET_DIR}/back.png`;
+const CARD_BACK_IMAGE = `${CARD_ASSET_DIR}/back.${CARD_ASSET_EXT}`;
 const FOUNDATION_START = 0;
 const ACE_INDEX = 7;
 
 const app = document.querySelector("#app");
 let deferredInstallPrompt = null;
-let state = loadGame() ?? createNewGame();
+let playerStats = loadStats();
+let state = loadGame();
+if (!state) {
+  state = createNewGame();
+  recordGameStarted();
+}
 let selected = null;
 let message = "Válassz egy lapot, majd kattints a célhelyre.";
-let helpOpen = false;
+let winModalOpen = false;
 
 function createDeck() {
   return SUITS.flatMap((suit) =>
@@ -59,16 +66,19 @@ function createNewGame() {
     }
   }
 
+  const createdAt = Date.now();
   return {
     tableau,
     stock: deck.slice(cursor).map((card) => ({ ...card, faceUp: false })),
     waste: [],
     foundations: Object.fromEntries(SUITS.map((suit) => [suit.id, []])),
     moves: 0,
-    startedAt: Date.now(),
+    startedAt: createdAt,
     elapsedBeforeLoad: 0,
     history: [],
     won: false,
+    createdAt,
+    gameId: `${createdAt}-${Math.random().toString(36).slice(2, 10)}`,
   };
 }
 
@@ -82,21 +92,35 @@ function saveHistory() {
 }
 
 function commit(nextMessage) {
+  const wasWon = state.won;
   state.moves += 1;
   message = nextMessage;
   state.won = checkWin();
+
+  if (state.won && !wasWon) {
+    const finalSeconds = getElapsedSeconds();
+    recordWin(finalSeconds);
+    winModalOpen = true;
+    message = `Gratulálok, megnyerted ${state.moves} lépésből, ${formatTime(finalSeconds)} alatt!`;
+  }
+
   selected = null;
   saveGame();
   render();
 }
 
 function saveGame() {
+  if (!state) return;
   const toSave = {
     ...state,
     elapsedBeforeLoad: getElapsedSeconds(),
     startedAt: Date.now(),
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  } catch {
+    console.warn("Nem sikerült menteni a játékállást.");
+  }
 }
 
 function loadGame() {
@@ -108,10 +132,100 @@ function loadGame() {
     parsed.startedAt = Date.now();
     parsed.history = Array.isArray(parsed.history) ? parsed.history : [];
     parsed.won = Boolean(parsed.won);
+    parsed.createdAt = parsed.createdAt || Date.now();
+    parsed.gameId = parsed.gameId || `${parsed.createdAt}-${Math.random().toString(36).slice(2, 10)}`;
     return parsed;
   } catch {
     return null;
   }
+}
+
+function normalizeLeaderboard(entries) {
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => Number.isFinite(Number(entry.seconds)))
+    .map((entry) => ({
+      seconds: Math.max(0, Math.floor(Number(entry.seconds))),
+      moves: Math.max(0, Math.floor(Number(entry.moves) || 0)),
+      wonAt: entry.wonAt || new Date().toISOString(),
+      gameId: entry.gameId || `${entry.wonAt || Date.now()}-${entry.moves || 0}`,
+    }))
+    .sort((a, b) => a.seconds - b.seconds || a.moves - b.moves || String(a.wonAt).localeCompare(String(b.wonAt)))
+    .slice(0, LEADERBOARD_LIMIT);
+}
+
+function loadStats() {
+  const fallback = {
+    gamesStarted: 0,
+    gamesWon: 0,
+    bestTime: null,
+    bestMoves: null,
+    currentStreak: 0,
+    bestStreak: 0,
+    completedGameIds: {},
+    bestTimes: [],
+  };
+  try {
+    const raw = localStorage.getItem(STATS_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    const savedBestTimes = normalizeLeaderboard(parsed.bestTimes || parsed.leaderboard || []);
+    const migratedBestTimes = savedBestTimes.length || parsed.bestTime == null
+      ? savedBestTimes
+      : normalizeLeaderboard([{
+          seconds: parsed.bestTime,
+          moves: parsed.bestMoves || 0,
+          wonAt: new Date().toISOString(),
+          gameId: "migrated-best-time",
+        }]);
+    return {
+      ...fallback,
+      ...parsed,
+      completedGameIds: parsed.completedGameIds || {},
+      bestTimes: migratedBestTimes,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveStats() {
+  playerStats.bestTimes = normalizeLeaderboard(playerStats.bestTimes);
+  try {
+    localStorage.setItem(STATS_KEY, JSON.stringify(playerStats));
+  } catch {
+    console.warn("Nem sikerült menteni a statisztikákat.");
+  }
+}
+
+function recordGameStarted() {
+  playerStats.gamesStarted += 1;
+  saveStats();
+}
+
+function recordAbandonedGameIfNeeded() {
+  if (state && !state.won && state.moves > 0) {
+    playerStats.currentStreak = 0;
+    saveStats();
+  }
+}
+
+function recordWin(finalSeconds) {
+  playerStats.completedGameIds = playerStats.completedGameIds || {};
+  const gameId = state.gameId || `${state.createdAt}-${state.moves}`;
+  if (playerStats.completedGameIds[gameId]) return;
+
+  const wonAt = new Date().toISOString();
+  playerStats.completedGameIds[gameId] = { wonAt, moves: state.moves, seconds: finalSeconds };
+  playerStats.gamesWon += 1;
+  playerStats.currentStreak += 1;
+  playerStats.bestStreak = Math.max(playerStats.bestStreak || 0, playerStats.currentStreak);
+  playerStats.bestTime = playerStats.bestTime == null ? finalSeconds : Math.min(playerStats.bestTime, finalSeconds);
+  playerStats.bestMoves = playerStats.bestMoves == null ? state.moves : Math.min(playerStats.bestMoves, state.moves);
+  playerStats.bestTimes = normalizeLeaderboard([
+    ...(playerStats.bestTimes || []),
+    { seconds: finalSeconds, moves: state.moves, wonAt, gameId },
+  ]);
+  saveStats();
 }
 
 function getElapsedSeconds() {
@@ -119,9 +233,18 @@ function getElapsedSeconds() {
 }
 
 function formatTime(totalSeconds) {
-  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
-  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+  const safeSeconds = Math.max(0, Number(totalSeconds) || 0);
+  const minutes = Math.floor(safeSeconds / 60).toString().padStart(2, "0");
+  const seconds = (safeSeconds % 60).toString().padStart(2, "0");
   return `${minutes}:${seconds}`;
+}
+
+function formatDate(value) {
+  try {
+    return new Intl.DateTimeFormat("hu-HU", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  } catch {
+    return "–";
+  }
 }
 
 function suitMeta(suitId) {
@@ -131,18 +254,35 @@ function suitMeta(suitId) {
 function cardImagePath(card) {
   const suit = suitMeta(card.suit);
   const rankAsset = RANK_ASSET_NAMES[card.rankIndex];
-  return `${CARD_ASSET_DIR}/${suit.assetSuit}-${rankAsset}.png`;
+  return `${CARD_ASSET_DIR}/${suit.assetSuit}-${rankAsset}.${CARD_ASSET_EXT}`;
+}
+
+function cardName(card) {
+  const suit = suitMeta(card.suit);
+  return `${suit.name} ${card.rank}`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function canPlaceOnTableau(movingCard, targetCard) {
   if (!targetCard) return movingCard.rankIndex === ACE_INDEX;
-  return targetCard.rankIndex === movingCard.rankIndex + 1;
+  return targetCard.rankIndex === movingCard.rankIndex + 1 && targetCard.suit !== movingCard.suit;
 }
 
 function canMoveStack(stack) {
   if (!stack.length || stack.some((card) => !card.faceUp)) return false;
   for (let i = 1; i < stack.length; i += 1) {
-    if (stack[i - 1].rankIndex !== stack[i].rankIndex + 1) return false;
+    const upperCard = stack[i - 1];
+    const lowerCard = stack[i];
+    if (upperCard.rankIndex !== lowerCard.rankIndex + 1) return false;
+    if (upperCard.suit === lowerCard.suit) return false;
   }
   return true;
 }
@@ -163,6 +303,8 @@ function flipTopIfNeeded(column) {
 
 function drawFromStock() {
   if (state.won) return;
+  selected = null;
+
   if (state.stock.length === 0) {
     if (state.waste.length === 0) {
       showMessage("Nincs mit visszaforgatni.");
@@ -187,8 +329,15 @@ function undoMove() {
     showMessage("Még nincs visszavonható lépés.");
     return;
   }
+  const elapsed = getElapsedSeconds();
   const currentHistory = state.history;
-  state = { ...previous, history: currentHistory, startedAt: Date.now() };
+  state = {
+    ...previous,
+    history: currentHistory,
+    elapsedBeforeLoad: elapsed,
+    startedAt: Date.now(),
+  };
+  winModalOpen = false;
   message = "Visszavontad az előző lépést.";
   selected = null;
   saveGame();
@@ -198,8 +347,11 @@ function undoMove() {
 function restartGame() {
   const ok = confirm("Új játékot indítasz? A jelenlegi állás elveszik.");
   if (!ok) return;
+  recordAbandonedGameIfNeeded();
   state = createNewGame();
+  recordGameStarted();
   selected = null;
+  winModalOpen = false;
   message = "Új játék indult. Sok sikert!";
   saveGame();
   render();
@@ -210,8 +362,9 @@ function selectFromTableau(columnIndex, cardIndex) {
   const column = state.tableau[columnIndex];
   const stack = column.slice(cardIndex);
   if (!stack[0]?.faceUp) return;
+
   if (!canMoveStack(stack)) {
-    showMessage("Ezt a sort nem lehet együtt mozgatni: csak csökkenő, felfordított sor mozgatható.");
+    showMessage("Ezt a sort nem lehet együtt mozgatni: csak csökkenő, felfordított, eltérő színű sor mozgatható.");
     return;
   }
   selected = { source: "tableau", columnIndex, cardIndex, cards: stack.map((card) => card.id) };
@@ -303,7 +456,7 @@ function moveToTableau(targetColumnIndex) {
   }
   if (!canPlaceOnTableau(moving[0], targetCard)) {
     showMessage(targetCard
-      ? `${cardName(moving[0])} nem tehető erre: ${cardName(targetCard)}.`
+      ? `${cardName(moving[0])} nem tehető erre: ${cardName(targetCard)}. Csökkenő sorrend kell, és azonos szín nem kerülhet egymás alá.`
       : "Üres oszlopra csak Ász kerülhet.");
     return;
   }
@@ -343,48 +496,8 @@ function moveToFoundation(suitId) {
   commit(`${cardName(card)} a gyűjtőpakliba került.`);
 }
 
-function autoMovePossibleFoundations() {
-  if (state.won) return;
-  let moved = 0;
-  saveHistory();
-
-  let changed = true;
-  while (changed) {
-    changed = false;
-
-    for (const column of state.tableau) {
-      const card = column[column.length - 1];
-      if (card?.faceUp && canPlaceOnFoundation(card)) {
-        state.foundations[card.suit].push({ ...column.pop(), faceUp: true });
-        flipTopIfNeeded(column);
-        moved += 1;
-        changed = true;
-      }
-    }
-
-    const wasteCard = state.waste[state.waste.length - 1];
-    if (wasteCard && canPlaceOnFoundation(wasteCard)) {
-      state.foundations[wasteCard.suit].push({ ...state.waste.pop(), faceUp: true });
-      moved += 1;
-      changed = true;
-    }
-  }
-
-  if (moved === 0) {
-    state.history.pop();
-    showMessage("Most nincs automatikusan gyűjtőbe tehető lap.");
-    return;
-  }
-  commit(`${moved} lap automatikusan a gyűjtőpakliba került.`);
-}
-
 function checkWin() {
   return SUITS.every((suit) => state.foundations[suit.id].length === RANKS.length);
-}
-
-function cardName(card) {
-  const suit = suitMeta(card.suit);
-  return `${suit.name} ${card.rank}`;
 }
 
 function showMessage(nextMessage) {
@@ -410,7 +523,6 @@ function isValidTargetFoundation(suitId) {
 }
 
 function renderCard(card, options = {}) {
-  const suit = suitMeta(card.suit);
   const click = options.click ?? "";
   const extraClass = options.extraClass ?? "";
 
@@ -424,6 +536,7 @@ function renderCard(card, options = {}) {
     `;
   }
 
+  const suit = suitMeta(card.suit);
   const selectedClass = isSelectedCard(card) ? "selected" : "";
   const label = `${suit.name} ${card.rank}`;
   const image = cardImagePath(card);
@@ -458,7 +571,7 @@ function renderWaste() {
     <section>
       <p class="pile-label">Dobó · ${state.waste.length}</p>
       ${card
-        ? renderCard(card, { click: "onclick=\"selectFromWaste()\"" })
+        ? renderCard(card, { click: "onclick=\"event.stopPropagation(); selectFromWaste()\"" })
         : `<div class="card-slot">Üres</div>`}
     </section>
   `;
@@ -500,19 +613,69 @@ function renderTableau() {
   `;
 }
 
-function renderWinModal() {
+function formatWinRate() {
+  if (!playerStats.gamesStarted) return "0%";
+  return `${Math.round((playerStats.gamesWon / playerStats.gamesStarted) * 100)}%`;
+}
+
+function renderStats() {
+  const completed = SUITS.reduce((sum, suit) => sum + state.foundations[suit.id].length, 0);
+  const bestTime = playerStats.bestTime == null ? "–" : formatTime(playerStats.bestTime);
+  const bestMoves = playerStats.bestMoves == null ? "–" : playerStats.bestMoves;
   return `
-    <div class="modal-backdrop ${state.won ? "open" : ""}">
+    <section class="stats" aria-label="Játékállapot">
+      <div class="stat-card"><span class="stat-label">Lépés</span><span class="stat-value">${state.moves}</span></div>
+      <div class="stat-card"><span class="stat-label">Idő</span><span class="stat-value" id="timer">${formatTime(getElapsedSeconds())}</span></div>
+      <div class="stat-card"><span class="stat-label">Kész</span><span class="stat-value">${completed}/32</span></div>
+      <div class="stat-card"><span class="stat-label">Nyert</span><span class="stat-value">${playerStats.gamesWon}/${playerStats.gamesStarted}</span></div>
+      <div class="stat-card"><span class="stat-label">Arány</span><span class="stat-value">${formatWinRate()}</span></div>
+      <div class="stat-card"><span class="stat-label">Legjobb</span><span class="stat-value">${bestTime} · ${bestMoves}</span></div>
+    </section>
+  `;
+}
+
+function renderLeaderboard() {
+  const entries = normalizeLeaderboard(playerStats.bestTimes);
+  return `
+    <section class="leaderboard" aria-label="Ranglista">
+      <div class="leaderboard-header">
+        <h2>Ranglista</h2>
+        <span>Legjobb idők</span>
+      </div>
+      ${entries.length
+        ? `<ol class="leaderboard-list">
+            ${entries.map((entry) => `
+              <li>
+                <span class="rank-time">${formatTime(entry.seconds)}</span>
+                <span class="rank-meta">${entry.moves} lépés · ${formatDate(entry.wonAt)}</span>
+              </li>
+            `).join("")}
+          </ol>`
+        : `<p class="leaderboard-empty">Még nincs nyertes játék. Az első győzelem után ide kerülnek a legjobb idők.</p>`}
+    </section>
+  `;
+}
+
+function renderWinModal() {
+  const open = state.won && winModalOpen;
+  return `
+    <div class="modal-backdrop ${open ? "open" : ""}">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="win-title">
         <h2 id="win-title">Megnyerted! 🎉</h2>
         <p>Az összes magyar kártya a gyűjtőpaklikba került. Lépések: <strong>${state.moves}</strong>, idő: <strong>${formatTime(getElapsedSeconds())}</strong>.</p>
+        <p class="modal-small">Legjobb időd: <strong>${playerStats.bestTime == null ? "–" : formatTime(playerStats.bestTime)}</strong>, legkevesebb lépésed: <strong>${playerStats.bestMoves ?? "–"}</strong>, aktuális sorozat: <strong>${playerStats.currentStreak}</strong>.</p>
         <div class="modal-actions">
-          <button class="btn" onclick="window.location.reload()">Bezárás</button>
+          <button class="btn" onclick="closeWinModal()">Bezárás</button>
           <button class="btn primary" onclick="restartGame()">Új</button>
         </div>
       </div>
     </div>
   `;
+}
+
+function closeWinModal() {
+  winModalOpen = false;
+  render();
 }
 
 function renderInstallBanner() {
@@ -525,30 +688,21 @@ function renderInstallBanner() {
 }
 
 function render() {
-  const completed = SUITS.reduce((sum, suit) => sum + state.foundations[suit.id].length, 0);
   app.innerHTML = `
     <main class="app-shell">
       <header class="header">
         <div class="title-wrap">
           <h1>Magyar Passziánsz</h1>
-          <p class="subtitle">32 lapos magyar kártyás passziánsz. Gyűjtsd fel színenként VII-től Ászig.</p>
+          <p class="subtitle">32 lapos magyar kártyás passziánsz. Gyűjtsd fel színenként VII-től Ászig; oszlopban azonos szín nem kerülhet egymás alá.</p>
         </div>
         <div class="toolbar">
           <button class="btn primary" onclick="restartGame()">Új</button>
           <button class="btn" onclick="undoMove()" ${state.history.length ? "" : "disabled"}>Vissza</button>
-          <button class="btn" onclick="autoMovePossibleFoundations()">Auto</button>
-          <button class="btn" onclick="toggleHelp()" aria-label="Szabályok">?</button>
         </div>
       </header>
 
       ${renderInstallBanner()}
-
-      <section class="stats" aria-label="Játékállapot">
-        <div class="stat-card"><span class="stat-label">Lépés</span><span class="stat-value">${state.moves}</span></div>
-        <div class="stat-card"><span class="stat-label">Idő</span><span class="stat-value" id="timer">${formatTime(getElapsedSeconds())}</span></div>
-        <div class="stat-card"><span class="stat-label">Kész</span><span class="stat-value">${completed}/32</span></div>
-        <div class="stat-card"><span class="stat-label">Kijelölés</span><span class="stat-value">${selected ? "van" : "nincs"}</span></div>
-      </section>
+      ${renderStats()}
 
       <section class="board">
         <div class="top-row">
@@ -560,28 +714,12 @@ function render() {
         ${renderTableau()}
       </section>
 
-      <p class="message" aria-live="polite">${message}</p>
-
-      <section class="help-panel ${helpOpen ? "open" : ""}">
-        <h2>Szabályok</h2>
-        <ul>
-          <li>A gyűjtőpaklik színenként épülnek: VII, VIII, IX, X, Alsó, Felső, Király, Ász.</li>
-          <li>Az oszlopokban csökkenő sorrendben rakhatsz: Ászra Király, Királyra Felső, és így tovább.</li>
-          <li>Üres oszlopra csak Ász kerülhet.</li>
-          <li>Felfordított, szabályos sort is mozgathatsz az oszlopok között.</li>
-          <li>A dobópakli korlátlanul visszaforgatható a húzópakliba.</li>
-        </ul>
-        <p class="asset-note">Verzió: ${APP_VERSION}. Kártyaképek: assets/cards-large/ mappa. Fájlnevek: heart/bell/leaf/acorn + seven/eight/nine/ten/unter/ober/king/ace.</p>
-      </section>
+      <p class="message" aria-live="polite">${escapeHtml(message)}</p>
+      ${renderLeaderboard()}
       ${renderWinModal()}
     </main>
   `;
   updateInstallBanner();
-}
-
-function toggleHelp() {
-  helpOpen = !helpOpen;
-  render();
 }
 
 async function installApp() {
@@ -612,6 +750,11 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+window.addEventListener("pagehide", saveGame);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveGame();
+});
+
 setInterval(() => {
   const timer = document.querySelector("#timer");
   if (timer && !state.won) timer.textContent = formatTime(getElapsedSeconds());
@@ -626,13 +769,13 @@ window.moveToTableau = moveToTableau;
 window.moveToFoundation = moveToFoundation;
 window.restartGame = restartGame;
 window.undoMove = undoMove;
-window.autoMovePossibleFoundations = autoMovePossibleFoundations;
-window.toggleHelp = toggleHelp;
 window.installApp = installApp;
+window.clearSelection = clearSelection;
+window.closeWinModal = closeWinModal;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js?v=mobile2", { updateViaCache: "none" })
+    navigator.serviceWorker.register("sw.js?v=ranglista", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(() => {
         console.info("A service worker regisztráció nem sikerült. Helyi file:// megnyitásnál ez normális.");
