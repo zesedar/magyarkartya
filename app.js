@@ -1,14 +1,19 @@
-const STORAGE_KEY = "magyar-passziansz-v1";
+const STORAGE_KEY = "magyar-passziansz-v3";
 const HISTORY_LIMIT = 80;
 
+const APP_VERSION = "kártyaképes v3";
+const CARD_ASSET_DIR = "assets/cards-large";
+
 const SUITS = [
-  { id: "piros", name: "Piros", icon: "♥", className: "red-suit" },
-  { id: "tok", name: "Tök", icon: "♦", className: "bell-suit" },
-  { id: "zold", name: "Zöld", icon: "♣", className: "green-suit" },
-  { id: "makk", name: "Makk", icon: "♠", className: "neutral-suit" },
+  { id: "piros", name: "Piros", icon: "♥", className: "red-suit", assetSuit: "heart" },
+  { id: "tok", name: "Tök", icon: "♦", className: "bell-suit", assetSuit: "bell" },
+  { id: "zold", name: "Zöld", icon: "♣", className: "green-suit", assetSuit: "leaf" },
+  { id: "makk", name: "Makk", icon: "♠", className: "neutral-suit", assetSuit: "acorn" },
 ];
 
 const RANKS = ["VII", "VIII", "IX", "X", "Alsó", "Felső", "Király", "Ász"];
+const RANK_ASSET_NAMES = ["seven", "eight", "nine", "ten", "unter", "ober", "king", "ace"];
+const CARD_BACK_IMAGE = `${CARD_ASSET_DIR}/back.png`;
 const FOUNDATION_START = 0;
 const ACE_INDEX = 7;
 
@@ -121,6 +126,12 @@ function formatTime(totalSeconds) {
 
 function suitMeta(suitId) {
   return SUITS.find((suit) => suit.id === suitId);
+}
+
+function cardImagePath(card) {
+  const suit = suitMeta(card.suit);
+  const rankAsset = RANK_ASSET_NAMES[card.rankIndex];
+  return `${CARD_ASSET_DIR}/${suit.assetSuit}-${rankAsset}.png`;
 }
 
 function canPlaceOnTableau(movingCard, targetCard) {
@@ -385,32 +396,34 @@ function isValidTargetFoundation(suitId) {
 
 function renderCard(card, options = {}) {
   const suit = suitMeta(card.suit);
+  const click = options.click ?? "";
+  const extraClass = options.extraClass ?? "";
+
   if (!card.faceUp) {
-    return `<button class="card face-down ${options.extraClass ?? ""}" aria-label="Lefordított lap" tabindex="-1"></button>`;
+    const tabIndex = click ? "" : 'tabindex="-1"';
+    const ariaLabel = click ? "Húzás a pakliból" : "Lefordított lap";
+    return `
+      <button class="card face-down ${extraClass}" ${click} aria-label="${ariaLabel}" ${tabIndex}>
+        <img class="card-image" src="${CARD_BACK_IMAGE}" alt="" draggable="false" loading="lazy">
+      </button>
+    `;
   }
 
   const selectedClass = isSelectedCard(card) ? "selected" : "";
-  const click = options.click ?? "";
   const label = `${suit.name} ${card.rank}`;
+  const image = cardImagePath(card);
 
   return `
-    <button class="card ${suit.className} ${selectedClass} ${options.extraClass ?? ""}" ${click} aria-label="${label}">
-      <div class="card-header"><span>${card.rank}</span><span>${suit.icon}</span></div>
-      <div class="card-center">
-        <div>
-          <div class="card-suit-icon">${suit.icon}</div>
-          <div class="card-rank">${card.rank}</div>
-          <div class="card-suit-name">${suit.name}</div>
-        </div>
-      </div>
-      <div class="card-footer"><span>${card.rank}</span><span>${suit.icon}</span></div>
+    <button class="card image-card ${suit.className} ${selectedClass} ${extraClass}" ${click} aria-label="${label}">
+      <img class="card-image" src="${image}" alt="${label}" draggable="false" loading="lazy">
+      <span class="sr-only">${label}</span>
     </button>
   `;
 }
 
 function renderStock() {
   const stockTop = state.stock.length > 0
-    ? `<button class="card face-down" onclick="drawFromStock()" aria-label="Húzás a pakliból"></button>`
+    ? renderCard({ faceUp: false }, { click: 'onclick="drawFromStock()"' })
     : `<div class="card-slot ${state.waste.length ? "highlight" : ""}">Üres húzópakli</div>`;
 
   return `
@@ -543,6 +556,7 @@ function render() {
           <li>Felfordított, szabályos sort is mozgathatsz az oszlopok között.</li>
           <li>A dobópakli korlátlanul visszaforgatható a húzópakliba.</li>
         </ul>
+        <p class="asset-note">Verzió: ${APP_VERSION}. Kártyaképek: assets/cards-large/ mappa. Fájlnevek: heart/bell/leaf/acorn + seven/eight/nine/ten/unter/ober/king/ace.</p>
       </section>
       ${renderWinModal()}
     </main>
@@ -602,9 +616,11 @@ window.installApp = installApp;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {
-      console.info("A service worker regisztráció nem sikerült. Helyi file:// megnyitásnál ez normális.");
-    });
+    navigator.serviceWorker.register("sw.js?v=cards3", { updateViaCache: "none" })
+      .then((registration) => registration.update())
+      .catch(() => {
+        console.info("A service worker regisztráció nem sikerült. Helyi file:// megnyitásnál ez normális.");
+      });
   });
 }
 

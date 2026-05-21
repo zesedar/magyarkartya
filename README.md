@@ -34,6 +34,7 @@ http://localhost:5173
 - `manifest.webmanifest` – PWA manifest
 - `sw.js` – offline cache service worker
 - `assets/icon-192.png`, `assets/icon-512.png` – PWA ikonok
+- `assets/cards-large/*.png` – a magyar kártyalapok képei és a hátlap
 
 ## Következő fejlesztési ötletek
 
@@ -41,3 +42,33 @@ http://localhost:5173
 - Statisztikák: nyert játszmák, átlagidő, legkevesebb lépés.
 - Animált lapmozgatás.
 - Saját magyar kártya grafikák importálása.
+
+
+## Kártyaképek
+
+A program a `assets/cards-large/` mappában lévő PNG-kre hivatkozik.
+
+Színek megfeleltetése:
+
+- `heart-*` → Piros
+- `bell-*` → Tök
+- `leaf-*` → Zöld
+- `acorn-*` → Makk
+
+Rangok megfeleltetése:
+
+- `seven` → VII
+- `eight` → VIII
+- `nine` → IX
+- `ten` → X
+- `unter` → Alsó
+- `ober` → Felső
+- `king` → Király
+- `ace` → Ász
+
+A `sw.js` ezeket a képeket is cache-eli, ezért a játék offline is valódi kártyaképekkel működik.
+
+
+## Frissítési megjegyzés
+
+Ez a csomag `magyar-passziansz-v3-card-images-20260521` service worker cache-t használ. Ha korábbi verziót látsz, töröld a böngészőben az oldal service workerét / site data-ját, majd töltsd újra az oldalt.

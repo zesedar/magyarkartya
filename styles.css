@@ -216,20 +216,40 @@ button, select {
 
 .card {
   width: 100%;
+  aspect-ratio: 363 / 585;
   min-height: 132px;
   border-radius: var(--radius);
   border: 1px solid var(--card-border);
-  background:
-    linear-gradient(145deg, rgba(255,255,255,0.95), rgba(246,240,222,0.95));
+  background: #fffdf6;
   color: var(--ink);
-  padding: 10px;
+  padding: 0;
   box-shadow: 0 9px 18px rgba(0,0,0,0.22);
   cursor: pointer;
   position: relative;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
+  display: block;
   overflow: hidden;
   transition: transform 0.1s ease, box-shadow 0.15s ease, outline 0.15s ease;
+}
+
+.card-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .card:hover, .card:focus-visible {
@@ -247,19 +267,12 @@ button, select {
 .card.face-down {
   cursor: default;
   border-color: rgba(255,255,255,0.28);
-  background:
-    linear-gradient(135deg, rgba(255,255,255,0.1), transparent),
-    repeating-linear-gradient(45deg, #8a1d1d 0 10px, #6f1515 10px 20px);
-  color: #fff;
-  place-items: center;
+  background: #6f1515;
 }
 
-.card.face-down::after {
-  content: "✦ 32 ✦";
-  font-size: 1.1rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  color: rgba(255,255,255,0.78);
+.stock-actions + .card.face-down,
+.card.face-down[onclick] {
+  cursor: pointer;
 }
 
 .card-header, .card-footer {
@@ -403,4 +416,16 @@ button, select {
   .card, .card-slot, .column-empty-hint { min-height: 116px; }
   .stack-card { margin-top: -70px; }
   .column { padding: 6px; }
+}
+
+.image-card .card-header,
+.image-card .card-footer,
+.image-card .card-center {
+  display: none;
+}
+
+.asset-note {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.72);
 }
