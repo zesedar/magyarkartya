@@ -1,9 +1,9 @@
-const CACHE_NAME = "magyar-passziansz-v4-mobile-card-images-20260521";
+const CACHE_NAME = "magyar-passziansz-v5-foundation-click-fix-20260521";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=mobile1",
-  "./app.js?v=mobile1",
+  "./styles.css?v=mobile2",
+  "./app.js?v=mobile2",
   "./manifest.webmanifest",
   "./assets/icon-192.png",
   "./assets/icon-512.png",
@@ -63,7 +63,7 @@ self.addEventListener("fetch", (event) => {
 
   const requestUrl = new URL(event.request.url);
   const isNavigation = event.request.mode === "navigate";
-  const isAppShell = requestUrl.pathname.endsWith("/app.js") || requestUrl.pathname.endsWith("/styles.css") || requestUrl.pathname.endsWith("/index.html");
+  const isAppShell = requestUrl.pathname.endsWith("/app.js") || requestUrl.pathname.endsWith("/styles.css") || requestUrl.pathname.endsWith("/index.html") || requestUrl.pathname.endsWith("/sw.js");
 
   if (isNavigation || isAppShell) {
     event.respondWith(

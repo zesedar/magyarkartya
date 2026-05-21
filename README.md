@@ -15,7 +15,7 @@ Fő változások:
 - a statisztika kompaktabb;
 - a húzó, dobó és gyűjtőpaklik rövid címkéket kaptak;
 - a húzópakli üres állapotban közvetlenül a paklihelyre koppintva visszaforgatható;
-- a PWA cache verziója frissült: `magyar-passziansz-v4-mobile-card-images-20260521`.
+- a PWA cache verziója frissült: `magyar-passziansz-v5-foundation-click-fix-20260521`.
 
 ## Szabályok
 

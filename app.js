@@ -1,7 +1,7 @@
 const STORAGE_KEY = "magyar-passziansz-v3";
 const HISTORY_LIMIT = 80;
 
-const APP_VERSION = "mobilra optimalizált v4";
+const APP_VERSION = "mobilra optimalizált v5 – gyűjtőpakli kattintás javítva";
 const CARD_ASSET_DIR = "assets/cards-large";
 
 const SUITS = [
@@ -235,6 +235,21 @@ function selectFromFoundation(suitId) {
   showMessage(`${cardName(card)} kijelölve a gyűjtőpakliból.`);
 }
 
+function handleFoundationClick(suitId) {
+  if (state.won) return;
+
+  if (selected) {
+    if (selected.source === "foundation" && selected.suitId === suitId) {
+      clearSelection();
+      return;
+    }
+    moveToFoundation(suitId);
+    return;
+  }
+
+  selectFromFoundation(suitId);
+}
+
 function getSelectedCards() {
   if (!selected) return [];
   if (selected.source === "waste") {
@@ -457,8 +472,8 @@ function renderFoundation(suit) {
   return `
     <section>
       <p class="pile-label">${suit.name} · ${nextRank}</p>
-      <div class="card-slot foundation-slot ${highlight}" onclick="moveToFoundation('${suit.id}')">
-        ${top ? renderCard(top, { click: `onclick=\"event.stopPropagation(); selectFromFoundation('${suit.id}')\"` }) : `<span class="foundation-empty"><span class="suit-icon">${suit.icon}</span><small>${suit.name}<br>VII</small></span>`}
+      <div class="card-slot foundation-slot ${highlight}" onclick="handleFoundationClick('${suit.id}')">
+        ${top ? renderCard(top) : `<span class="foundation-empty"><span class="suit-icon">${suit.icon}</span><small>${suit.name}<br>VII</small></span>`}
       </div>
     </section>
   `;
@@ -605,6 +620,7 @@ setInterval(() => {
 window.drawFromStock = drawFromStock;
 window.selectFromWaste = selectFromWaste;
 window.selectFromFoundation = selectFromFoundation;
+window.handleFoundationClick = handleFoundationClick;
 window.selectFromTableau = selectFromTableau;
 window.moveToTableau = moveToTableau;
 window.moveToFoundation = moveToFoundation;
@@ -616,7 +632,7 @@ window.installApp = installApp;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js?v=mobile1", { updateViaCache: "none" })
+    navigator.serviceWorker.register("sw.js?v=mobile2", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(() => {
         console.info("A service worker regisztráció nem sikerült. Helyi file:// megnyitásnál ez normális.");
