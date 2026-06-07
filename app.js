@@ -1,5 +1,6 @@
-const STORAGE_KEY = "magyar-passziansz-v4";
+const STORAGE_KEY = "magyar-passziansz-v5-ketiranyu-torony";
 const STATS_KEY = "magyar-passziansz-stats-v1";
+const MODE_KEY = "magyar-passziansz-mode-v1";
 const HISTORY_LIMIT = 80;
 const LEADERBOARD_LIMIT = 10;
 
@@ -18,6 +19,27 @@ const RANK_ASSET_NAMES = ["seven", "eight", "nine", "ten", "unter", "ober", "kin
 const CARD_BACK_IMAGE = `${CARD_ASSET_DIR}/back.${CARD_ASSET_EXT}`;
 const FOUNDATION_START = 0;
 const ACE_INDEX = 7;
+const DEFAULT_MODE = "tower";
+
+const MODES = {
+  classic: {
+    id: "classic",
+    name: "Magyar Passziánsz",
+    shortName: "Klasszikus",
+    description: "Gyűjtsd fel színenként VII-től Ászig; oszlopban azonos szín nem kerülhet egymás alá.",
+  },
+  tower: {
+    id: "tower",
+    name: "Kétirányú torony",
+    shortName: "Kétirányú",
+    description: "Színenként két torony épül: az egyik VII-től felfelé, a másik Ásztól lefelé. Döntsd el, melyik lap melyik toronyba kerüljön.",
+  },
+};
+
+const FOUNDATION_DIRECTIONS = {
+  up: { id: "up", name: "Felfelé", icon: "↑", startRankIndex: FOUNDATION_START, step: 1 },
+  down: { id: "down", name: "Lefelé", icon: "↓", startRankIndex: ACE_INDEX, step: -1 },
+};
 
 const app = document.querySelector("#app");
 let deferredInstallPrompt = null;
@@ -52,7 +74,8 @@ function shuffle(cards) {
   return copy;
 }
 
-function createNewGame() {
+function createNewGame(mode = loadModePreference()) {
+  const normalizedMode = normalizeMode(mode);
   const deck = shuffle(createDeck());
   const tableau = Array.from({ length: 6 }, () => []);
   let cursor = 0;
@@ -68,17 +91,18 @@ function createNewGame() {
 
   const createdAt = Date.now();
   return {
+    mode: normalizedMode,
     tableau,
     stock: deck.slice(cursor).map((card) => ({ ...card, faceUp: false })),
     waste: [],
-    foundations: Object.fromEntries(SUITS.map((suit) => [suit.id, []])),
+    foundations: createEmptyFoundations(normalizedMode),
     moves: 0,
     startedAt: createdAt,
     elapsedBeforeLoad: 0,
     history: [],
     won: false,
     createdAt,
-    gameId: `${createdAt}-${Math.random().toString(36).slice(2, 10)}`,
+    gameId: `${createdAt}-${normalizedMode}-${Math.random().toString(36).slice(2, 10)}`,
   };
 }
 
@@ -129,11 +153,19 @@ function loadGame() {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed.tableau || !parsed.stock || !parsed.foundations) return null;
+    parsed.mode = normalizeMode(parsed.mode || loadModePreference());
+    parsed.foundations = normalizeFoundations(parsed.foundations, parsed.mode);
     parsed.startedAt = Date.now();
-    parsed.history = Array.isArray(parsed.history) ? parsed.history : [];
+    parsed.history = Array.isArray(parsed.history)
+      ? parsed.history.map((entry) => ({
+          ...entry,
+          mode: normalizeMode(entry.mode || parsed.mode),
+          foundations: normalizeFoundations(entry.foundations || {}, normalizeMode(entry.mode || parsed.mode)),
+        }))
+      : [];
     parsed.won = Boolean(parsed.won);
     parsed.createdAt = parsed.createdAt || Date.now();
-    parsed.gameId = parsed.gameId || `${parsed.createdAt}-${Math.random().toString(36).slice(2, 10)}`;
+    parsed.gameId = parsed.gameId || `${parsed.createdAt}-${parsed.mode}-${Math.random().toString(36).slice(2, 10)}`;
     return parsed;
   } catch {
     return null;
@@ -146,6 +178,7 @@ function normalizeLeaderboard(entries) {
     .map((entry) => ({
       seconds: Math.max(0, Math.floor(Number(entry.seconds))),
       moves: Math.max(0, Math.floor(Number(entry.moves) || 0)),
+      mode: normalizeMode(entry.mode || "classic"),
       wonAt: entry.wonAt || new Date().toISOString(),
       gameId: entry.gameId || `${entry.wonAt || Date.now()}-${entry.moves || 0}`,
     }))
@@ -223,7 +256,7 @@ function recordWin(finalSeconds) {
   playerStats.bestMoves = playerStats.bestMoves == null ? state.moves : Math.min(playerStats.bestMoves, state.moves);
   playerStats.bestTimes = normalizeLeaderboard([
     ...(playerStats.bestTimes || []),
-    { seconds: finalSeconds, moves: state.moves, wonAt, gameId },
+    { seconds: finalSeconds, moves: state.moves, mode: getCurrentMode(), wonAt, gameId },
   ]);
   saveStats();
 }
@@ -271,6 +304,107 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function normalizeMode(mode) {
+  return MODES[mode] ? mode : DEFAULT_MODE;
+}
+
+function loadModePreference() {
+  try {
+    return normalizeMode(localStorage.getItem(MODE_KEY) || DEFAULT_MODE);
+  } catch {
+    return DEFAULT_MODE;
+  }
+}
+
+function saveModePreference(mode) {
+  try {
+    localStorage.setItem(MODE_KEY, normalizeMode(mode));
+  } catch {
+    console.warn("Nem sikerült menteni a játékmódot.");
+  }
+}
+
+function getCurrentMode() {
+  return normalizeMode(state?.mode || DEFAULT_MODE);
+}
+
+function isTowerMode(mode = getCurrentMode()) {
+  return normalizeMode(mode) === "tower";
+}
+
+function getModeMeta(mode = getCurrentMode()) {
+  return MODES[normalizeMode(mode)];
+}
+
+function getFoundationDirections(mode = getCurrentMode()) {
+  return isTowerMode(mode) ? ["up", "down"] : ["up"];
+}
+
+function foundationKey(suitId, direction = "up") {
+  return `${suitId}-${direction}`;
+}
+
+function foundationSlots(mode = getCurrentMode()) {
+  return SUITS.flatMap((suit) => getFoundationDirections(mode).map((direction) => ({
+    suit,
+    suitId: suit.id,
+    direction,
+    key: foundationKey(suit.id, direction),
+  })));
+}
+
+function createEmptyFoundations(mode = getCurrentMode()) {
+  return Object.fromEntries(foundationSlots(mode).map((slot) => [slot.key, []]));
+}
+
+function normalizeFoundations(foundations, mode = getCurrentMode()) {
+  const empty = createEmptyFoundations(mode);
+  for (const slot of foundationSlots(mode)) {
+    const modernPile = foundations?.[slot.key];
+    const legacyPile = slot.direction === "up" ? foundations?.[slot.suitId] : null;
+    empty[slot.key] = Array.isArray(modernPile)
+      ? modernPile
+      : Array.isArray(legacyPile)
+        ? legacyPile
+        : [];
+  }
+  return empty;
+}
+
+function getFoundationPile(suitId, direction = "up") {
+  const key = foundationKey(suitId, direction);
+  if (!state.foundations[key]) state.foundations[key] = [];
+  return state.foundations[key];
+}
+
+function getFoundationCompletedCount(game = state) {
+  if (!game?.foundations) return 0;
+  return Object.values(game.foundations).reduce((sum, pile) => sum + (Array.isArray(pile) ? pile.length : 0), 0);
+}
+
+function getExpectedFoundationRankIndex(suitId, direction = "up") {
+  const pile = getFoundationPile(suitId, direction);
+  const rule = FOUNDATION_DIRECTIONS[direction];
+  return pile.length === 0
+    ? rule.startRankIndex
+    : pile[pile.length - 1].rankIndex + rule.step;
+}
+
+function isRankAllowedOnFoundation(rankIndex, direction = "up") {
+  if (!isTowerMode()) return true;
+  if (direction === "up") return rankIndex < ACE_INDEX;
+  if (direction === "down") return rankIndex > FOUNDATION_START;
+  return true;
+}
+
+function getExpectedFoundationLabel(suitId, direction = "up") {
+  const expected = getExpectedFoundationRankIndex(suitId, direction);
+  return expected >= 0 && expected < RANKS.length && isRankAllowedOnFoundation(expected, direction)
+    ? RANKS[expected]
+    : "kész";
+}
+
+
 function canPlaceOnTableau(movingCard, targetCard) {
   if (!targetCard) return movingCard.rankIndex === ACE_INDEX;
   return targetCard.rankIndex === movingCard.rankIndex + 1 && targetCard.suit !== movingCard.suit;
@@ -287,12 +421,13 @@ function canMoveStack(stack) {
   return true;
 }
 
-function canPlaceOnFoundation(card) {
-  const foundation = state.foundations[card.suit];
-  const expectedRank = foundation.length === 0
-    ? FOUNDATION_START
-    : foundation[foundation.length - 1].rankIndex + 1;
-  return card.rankIndex === expectedRank;
+function canPlaceOnFoundation(card, suitId = card.suit, direction = "up") {
+  if (card.suit !== suitId) return false;
+  const expectedRank = getExpectedFoundationRankIndex(suitId, direction);
+  return expectedRank >= 0
+    && expectedRank < RANKS.length
+    && isRankAllowedOnFoundation(expectedRank, direction)
+    && card.rankIndex === expectedRank;
 }
 
 function flipTopIfNeeded(column) {
@@ -344,17 +479,30 @@ function undoMove() {
   render();
 }
 
-function restartGame() {
-  const ok = confirm("Új játékot indítasz? A jelenlegi állás elveszik.");
+function restartGame(mode = getCurrentMode(), askConfirm = true) {
+  const nextMode = normalizeMode(mode);
+  const ok = !askConfirm || confirm("Új játékot indítasz? A jelenlegi állás elveszik.");
   if (!ok) return;
   recordAbandonedGameIfNeeded();
-  state = createNewGame();
+  saveModePreference(nextMode);
+  state = createNewGame(nextMode);
   recordGameStarted();
   selected = null;
   winModalOpen = false;
-  message = "Új játék indult. Sok sikert!";
+  message = `${getModeMeta(nextMode).name} indult. Sok sikert!`;
   saveGame();
   render();
+}
+
+function changeMode(mode) {
+  const nextMode = normalizeMode(mode);
+  if (nextMode === getCurrentMode()) return;
+  const ok = confirm(`Átváltasz erre: ${getModeMeta(nextMode).name}? Ez új játékot indít.`);
+  if (!ok) {
+    render();
+    return;
+  }
+  restartGame(nextMode, false);
 }
 
 function selectFromTableau(columnIndex, cardIndex) {
@@ -379,28 +527,30 @@ function selectFromWaste() {
   showMessage(`${cardName(card)} kijelölve a dobópakliból.`);
 }
 
-function selectFromFoundation(suitId) {
+function selectFromFoundation(suitId, direction = "up") {
   if (state.won) return;
-  const foundation = state.foundations[suitId];
+  const key = foundationKey(suitId, direction);
+  const foundation = getFoundationPile(suitId, direction);
   const card = foundation[foundation.length - 1];
   if (!card) return;
-  selected = { source: "foundation", suitId, cards: [card.id] };
-  showMessage(`${cardName(card)} kijelölve a gyűjtőpakliból.`);
+  selected = { source: "foundation", suitId, direction, foundationKey: key, cards: [card.id] };
+  showMessage(`${cardName(card)} kijelölve a ${FOUNDATION_DIRECTIONS[direction].name.toLowerCase()} toronyból.`);
 }
 
-function handleFoundationClick(suitId) {
+function handleFoundationClick(suitId, direction = "up") {
   if (state.won) return;
+  const key = foundationKey(suitId, direction);
 
   if (selected) {
-    if (selected.source === "foundation" && selected.suitId === suitId) {
+    if (selected.source === "foundation" && selected.foundationKey === key) {
       clearSelection();
       return;
     }
-    moveToFoundation(suitId);
+    moveToFoundation(suitId, direction);
     return;
   }
 
-  selectFromFoundation(suitId);
+  selectFromFoundation(suitId, direction);
 }
 
 function getSelectedCards() {
@@ -410,8 +560,8 @@ function getSelectedCards() {
     return card ? [card] : [];
   }
   if (selected.source === "foundation") {
-    const pile = state.foundations[selected.suitId];
-    const card = pile[pile.length - 1];
+    const pile = state.foundations[selected.foundationKey || foundationKey(selected.suitId, selected.direction || "up")];
+    const card = pile?.[pile.length - 1];
     return card ? [card] : [];
   }
   return state.tableau[selected.columnIndex].slice(selected.cardIndex);
@@ -427,7 +577,8 @@ function removeSelectedCards() {
     return [state.waste.pop()];
   }
   if (selected.source === "foundation") {
-    return [state.foundations[selected.suitId].pop()];
+    const key = selected.foundationKey || foundationKey(selected.suitId, selected.direction || "up");
+    return [state.foundations[key].pop()];
   }
   const column = state.tableau[selected.columnIndex];
   const moving = column.splice(selected.cardIndex);
@@ -467,7 +618,7 @@ function moveToTableau(targetColumnIndex) {
   commit("Sikeres mozgatás az oszlopok között.");
 }
 
-function moveToFoundation(suitId) {
+function moveToFoundation(suitId, direction = "up") {
   if (!selected) {
     showMessage("Előbb jelölj ki egy lapot.");
     return;
@@ -482,22 +633,23 @@ function moveToFoundation(suitId) {
     showMessage(`${cardName(card)} csak a saját színének gyűjtőpaklijába kerülhet.`);
     return;
   }
-  if (!canPlaceOnFoundation(card)) {
-    const expected = state.foundations[suitId].length === 0
-      ? RANKS[FOUNDATION_START]
-      : RANKS[state.foundations[suitId][state.foundations[suitId].length - 1].rankIndex + 1];
-    showMessage(`Ide most ${suitMeta(suitId).name} ${expected} kellene.`);
+  if (!canPlaceOnFoundation(card, suitId, direction)) {
+    const expected = getExpectedFoundationLabel(suitId, direction);
+    const directionName = FOUNDATION_DIRECTIONS[direction].name.toLowerCase();
+    showMessage(expected === "kész"
+      ? `${suitMeta(suitId).name} ${directionName} tornya már zárt.`
+      : `Ide most ${suitMeta(suitId).name} ${expected} kellene a ${directionName} toronyba.`);
     return;
   }
 
   saveHistory();
   const [removed] = removeSelectedCards();
-  state.foundations[suitId].push({ ...removed, faceUp: true });
-  commit(`${cardName(card)} a gyűjtőpakliba került.`);
+  getFoundationPile(suitId, direction).push({ ...removed, faceUp: true });
+  commit(`${cardName(card)} a ${FOUNDATION_DIRECTIONS[direction].name.toLowerCase()} toronyba került.`);
 }
 
 function checkWin() {
-  return SUITS.every((suit) => state.foundations[suit.id].length === RANKS.length);
+  return getFoundationCompletedCount() === SUITS.length * RANKS.length;
 }
 
 function showMessage(nextMessage) {
@@ -516,10 +668,10 @@ function isValidTargetTableau(index) {
   return moving.length > 0 && canMoveStack(moving) && canPlaceOnTableau(moving[0], target[target.length - 1]);
 }
 
-function isValidTargetFoundation(suitId) {
+function isValidTargetFoundation(suitId, direction = "up") {
   if (!selected) return false;
   const moving = getSelectedCards();
-  return moving.length === 1 && moving[0].suit === suitId && canPlaceOnFoundation(moving[0]);
+  return moving.length === 1 && moving[0].suit === suitId && canPlaceOnFoundation(moving[0], suitId, direction);
 }
 
 function renderCard(card, options = {}) {
@@ -577,17 +729,30 @@ function renderWaste() {
   `;
 }
 
-function renderFoundation(suit) {
-  const pile = state.foundations[suit.id];
+function renderFoundation(slot) {
+  const { suit, suitId, direction } = slot;
+  const pile = getFoundationPile(suitId, direction);
   const top = pile[pile.length - 1];
-  const highlight = isValidTargetFoundation(suit.id) ? "highlight" : "";
-  const nextRank = pile.length < RANKS.length ? RANKS[pile.length] : "kész";
+  const highlight = isValidTargetFoundation(suitId, direction) ? "highlight" : "";
+  const directionRule = FOUNDATION_DIRECTIONS[direction];
+  const nextRank = getExpectedFoundationLabel(suitId, direction);
+  const startRank = RANKS[directionRule.startRankIndex];
   return `
     <section>
-      <p class="pile-label">${suit.name} · ${nextRank}</p>
-      <div class="card-slot foundation-slot ${highlight}" onclick="handleFoundationClick('${suit.id}')">
-        ${top ? renderCard(top) : `<span class="foundation-empty"><span class="suit-icon">${suit.icon}</span><small>${suit.name}<br>VII</small></span>`}
+      <p class="pile-label">${suit.name} ${directionRule.icon} · ${nextRank}</p>
+      <div class="card-slot foundation-slot ${highlight}" onclick="handleFoundationClick('${suitId}', '${direction}')">
+        ${top ? renderCard(top) : `<span class="foundation-empty"><span class="suit-icon">${suit.icon}${directionRule.icon}</span><small>${suit.name}<br>${startRank}</small></span>`}
       </div>
+    </section>
+  `;
+}
+
+function renderFoundationArea() {
+  const mode = getCurrentMode();
+  const gridClass = isTowerMode(mode) ? "tower-foundations" : "classic-foundations";
+  return `
+    <section class="foundation-grid ${gridClass}" aria-label="Gyűjtőpaklik">
+      ${foundationSlots(mode).map(renderFoundation).join("")}
     </section>
   `;
 }
@@ -619,7 +784,7 @@ function formatWinRate() {
 }
 
 function renderStats() {
-  const completed = SUITS.reduce((sum, suit) => sum + state.foundations[suit.id].length, 0);
+  const completed = getFoundationCompletedCount();
   const bestTime = playerStats.bestTime == null ? "–" : formatTime(playerStats.bestTime);
   const bestMoves = playerStats.bestMoves == null ? "–" : playerStats.bestMoves;
   return `
@@ -647,7 +812,7 @@ function renderLeaderboard() {
             ${entries.map((entry) => `
               <li>
                 <span class="rank-time">${formatTime(entry.seconds)}</span>
-                <span class="rank-meta">${entry.moves} lépés · ${formatDate(entry.wonAt)}</span>
+                <span class="rank-meta">${MODES[entry.mode]?.shortName || "Játék"} · ${entry.moves} lépés · ${formatDate(entry.wonAt)}</span>
               </li>
             `).join("")}
           </ol>`
@@ -688,14 +853,19 @@ function renderInstallBanner() {
 }
 
 function render() {
+  const mode = getCurrentMode();
+  const modeMeta = getModeMeta(mode);
   app.innerHTML = `
     <main class="app-shell">
       <header class="header">
         <div class="title-wrap">
-          <h1>Magyar Passziánsz</h1>
-          <p class="subtitle">32 lapos magyar kártyás passziánsz. Gyűjtsd fel színenként VII-től Ászig; oszlopban azonos szín nem kerülhet egymás alá.</p>
+          <h1>${modeMeta.name}</h1>
+          <p class="subtitle">32 lapos magyar kártyás passziánsz. ${modeMeta.description}</p>
         </div>
         <div class="toolbar">
+          <select class="mode-select" onchange="changeMode(this.value)" aria-label="Játékmód">
+            ${Object.values(MODES).map((item) => `<option value="${item.id}" ${item.id === mode ? "selected" : ""}>${item.shortName}</option>`).join("")}
+          </select>
           <button class="btn primary" onclick="restartGame()">Új</button>
           <button class="btn" onclick="undoMove()" ${state.history.length ? "" : "disabled"}>Vissza</button>
         </div>
@@ -705,11 +875,10 @@ function render() {
       ${renderStats()}
 
       <section class="board">
-        <div class="top-row">
+        <div class="top-row ${isTowerMode(mode) ? "tower-row" : "classic-row"}">
           ${renderStock()}
           ${renderWaste()}
-          <div class="spacer"></div>
-          ${SUITS.map(renderFoundation).join("")}
+          ${renderFoundationArea()}
         </div>
         ${renderTableau()}
       </section>
@@ -768,6 +937,7 @@ window.selectFromTableau = selectFromTableau;
 window.moveToTableau = moveToTableau;
 window.moveToFoundation = moveToFoundation;
 window.restartGame = restartGame;
+window.changeMode = changeMode;
 window.undoMove = undoMove;
 window.installApp = installApp;
 window.clearSelection = clearSelection;
@@ -775,7 +945,7 @@ window.closeWinModal = closeWinModal;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js?v=ranglista", { updateViaCache: "none" })
+    navigator.serviceWorker.register("sw.js?v=torony", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(() => {
         console.info("A service worker regisztráció nem sikerült. Helyi file:// megnyitásnál ez normális.");

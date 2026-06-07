@@ -1,9 +1,9 @@
-const CACHE_NAME = "magyar-passziansz-v7-ranglista-webp-20260521";
+const CACHE_NAME = "magyar-passziansz-v8-ketiranyu-torony-20260607";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=ranglista",
-  "./app.js?v=ranglista",
+  "./styles.css?v=torony",
+  "./app.js?v=torony",
   "./manifest.webmanifest",
   "./assets/icon-192.png",
   "./assets/icon-512.png",

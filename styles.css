@@ -70,6 +70,27 @@ button { border: 0; }
   justify-content: flex-end;
 }
 
+.mode-select {
+  border: 1px solid rgba(255,255,255,0.2);
+  color: var(--text);
+  background: var(--panel);
+  padding: 9px 12px;
+  min-height: 40px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.mode-select:hover, .mode-select:focus-visible {
+  background: var(--panel-strong);
+  border-color: rgba(255,255,255,0.42);
+  outline: none;
+}
+
+.mode-select option {
+  color: #172018;
+  background: #fffdf6;
+}
+
 .btn {
   border: 1px solid rgba(255,255,255,0.2);
   color: var(--text);
@@ -138,10 +159,27 @@ button { border: 0; }
 
 .top-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 0.35fr repeat(4, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: var(--gap);
   align-items: start;
   margin-bottom: 14px;
+}
+
+.top-row.tower-row {
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+}
+
+.foundation-grid {
+  grid-column: span 4;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap);
+  align-items: start;
+}
+
+.tower-foundations {
+  grid-column: span 8;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 
 .pile-label {
@@ -401,7 +439,8 @@ button.card-slot:disabled {
     justify-content: flex-end;
   }
 
-  .btn {
+  .btn,
+  .mode-select {
     min-height: 34px;
     padding: 6px 8px;
     font-size: 0.78rem;
@@ -436,9 +475,19 @@ button.card-slot:disabled {
     box-shadow: none;
   }
 
-  .top-row {
+  .top-row,
+  .top-row.tower-row {
     grid-template-columns: repeat(6, minmax(0, 1fr));
     margin-bottom: 6px;
+  }
+
+  .foundation-grid {
+    grid-column: span 4;
+  }
+
+  .tower-foundations {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .spacer { display: none; }
@@ -509,7 +558,8 @@ button.card-slot:disabled {
   }
 
   .app-shell { padding-inline: 3px; }
-  .toolbar .btn { padding-inline: 6px; font-size: 0.72rem; }
+  .toolbar .btn,
+  .toolbar .mode-select { padding-inline: 6px; font-size: 0.72rem; }
   .title-wrap h1 { font-size: 0.98rem; }
   .column { min-height: min(66vh, 360px); }
 }
