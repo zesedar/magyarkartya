@@ -1204,7 +1204,7 @@ window.closeWinModal = closeWinModal;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js?v=ostrom-dropzone", { updateViaCache: "none" })
+    navigator.serviceWorker.register("sw.js?v=ostrom-compact-stack", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(() => {
         console.info("A service worker regisztráció nem sikerült. Helyi file:// megnyitásnál ez normális.");

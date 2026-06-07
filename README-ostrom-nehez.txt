@@ -19,3 +19,9 @@ A klasszikus Magyar Passziánsz mód megmaradt.
 - Minden oszlop aljára külön „Ide rak” célhely került, ezért nem kell az utolsó lap alján vadászni a kattintható részt.
 - Ostrom módban a laposzlopok görgethető kártyarészt kaptak, így hosszabb oszlopnál is megmarad az alsó rakási hely.
 - A PWA cache verziója frissült.
+
+2026-06-07 javítás – kompakt oszlopnézet:
+- Ostrom módban az egymást fedő lapok csak vékony felső sávot hagynak szabadon.
+- Az oszlopok alján megmarad az „Ide rak” célhely, így hosszabb soroknál is könnyű céloszlopra pakolni.
+- A kártyaoszlopok nem görgetős listaként működnek, hanem tömörebben kiférnek a táblán.
+- A PWA cache verzió frissítve: ostrom-compact-stack.
