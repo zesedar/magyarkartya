@@ -1,9 +1,9 @@
-const CACHE_NAME = "magyar-passziansz-v9-tablo-20260607";
+const CACHE_NAME = "magyar-passziansz-v10-ostrom-20260607";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=tablo",
-  "./app.js?v=tablo",
+  "./styles.css?v=ostrom",
+  "./app.js?v=ostrom",
   "./manifest.webmanifest",
   "./assets/icon-192.png",
   "./assets/icon-512.png",

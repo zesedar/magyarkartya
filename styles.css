@@ -875,3 +875,100 @@ button.card-slot:disabled {
     font-size: 0.58rem;
   }
 }
+
+/* Ostrom – Nehéz passziánsz */
+.ostrom-shell {
+  width: min(1480px, 100%);
+}
+
+.ostrom-board {
+  display: grid;
+  gap: var(--gap);
+}
+
+.ostrom-row {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-bottom: 0;
+}
+
+.free-cell-slot .card,
+.foundation-slot .card {
+  position: absolute;
+  inset: 0;
+}
+
+.free-cell-slot.selected-cell {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(242,193,78,0.22);
+  transform: translateY(-2px);
+}
+
+.ostrom-rule-box {
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.13);
+  background: rgba(0,0,0,0.12);
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  line-height: 1.32;
+  font-size: 0.88rem;
+}
+
+.ostrom-rule-box strong {
+  color: var(--gold);
+}
+
+.ostrom-tableau {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.ostrom-column {
+  min-height: 430px;
+}
+
+.ostrom-stack-card {
+  margin-top: clamp(-86px, -5.2vw, -49px);
+}
+
+.ostrom-stack-card:first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 980px) {
+  .ostrom-tableau {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .ostrom-column {
+    min-height: 320px;
+  }
+}
+
+@media (max-width: 760px) {
+  .ostrom-row {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    margin-bottom: 4px;
+  }
+
+  .ostrom-rule-box {
+    padding: 6px 7px;
+    border-radius: 12px;
+    font-size: 0.64rem;
+    gap: 2px;
+  }
+
+  .ostrom-tableau {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .ostrom-column {
+    min-height: min(42vh, 250px);
+    border-radius: 10px;
+    padding: 2px;
+  }
+
+  .ostrom-stack-card {
+    margin-top: clamp(-56px, -12.8vw, -39px);
+  }
+}

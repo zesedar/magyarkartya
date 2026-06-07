@@ -1,6 +1,6 @@
-const STORAGE_KEY = "magyar-passziansz-v6-tablo";
-const STATS_KEY = "magyar-passziansz-stats-v2";
-const MODE_KEY = "magyar-passziansz-mode-v2";
+const STORAGE_KEY = "magyar-passziansz-v7-ostrom";
+const STATS_KEY = "magyar-passziansz-stats-v3";
+const MODE_KEY = "magyar-passziansz-mode-v3";
 const HISTORY_LIMIT = 80;
 const LEADERBOARD_LIMIT = 10;
 
@@ -8,10 +8,10 @@ const CARD_ASSET_DIR = "assets/cards-webp";
 const CARD_ASSET_EXT = "webp";
 
 const SUITS = [
-  { id: "piros", name: "Piros", icon: "♥", className: "red-suit", assetSuit: "heart" },
-  { id: "tok", name: "Tök", icon: "♦", className: "bell-suit", assetSuit: "bell" },
-  { id: "zold", name: "Zöld", icon: "♣", className: "green-suit", assetSuit: "leaf" },
-  { id: "makk", name: "Makk", icon: "♠", className: "neutral-suit", assetSuit: "acorn" },
+  { id: "piros", name: "Piros", icon: "♥", className: "red-suit", assetSuit: "heart", group: "meleg" },
+  { id: "tok", name: "Tök", icon: "♦", className: "bell-suit", assetSuit: "bell", group: "meleg" },
+  { id: "zold", name: "Zöld", icon: "♣", className: "green-suit", assetSuit: "leaf", group: "hideg" },
+  { id: "makk", name: "Makk", icon: "♠", className: "neutral-suit", assetSuit: "acorn", group: "hideg" },
 ];
 
 const RANKS = ["VII", "VIII", "IX", "X", "Alsó", "Felső", "Király", "Ász"];
@@ -19,7 +19,9 @@ const RANK_ASSET_NAMES = ["seven", "eight", "nine", "ten", "unter", "ober", "kin
 const CARD_BACK_IMAGE = `${CARD_ASSET_DIR}/back.${CARD_ASSET_EXT}`;
 const FOUNDATION_START = 0;
 const ACE_INDEX = 7;
-const DEFAULT_MODE = "tablo";
+const KING_INDEX = 6;
+const OSTROM_FREE_CELLS = 2;
+const DEFAULT_MODE = "ostrom";
 
 const MODES = {
   classic: {
@@ -28,11 +30,11 @@ const MODES = {
     shortName: "Klasszikus",
     description: "Gyűjtsd fel színenként VII-től Ászig; oszlopban azonos szín nem kerülhet egymás alá.",
   },
-  tablo: {
-    id: "tablo",
-    name: "Király passziánsz",
-    shortName: "Király / Tabló",
-    description: "Nyolc nyitott halomban azonos értékű lapokat vonhatsz össze. A cél, hogy minden érték külön négyes kupacba kerüljön.",
+  ostrom: {
+    id: "ostrom",
+    name: "Ostrom – Nehéz",
+    shortName: "Ostrom – Nehéz",
+    description: "8 nyílt oszlop, 2 szabad cella, váltott csoportos építés; üres oszlopra csak Ász vagy Király kerülhet.",
   },
 };
 
@@ -45,8 +47,8 @@ if (!state) {
   recordGameStarted();
 }
 let selected = null;
-let message = getCurrentMode() === "tablo"
-  ? "Válassz egy halmot, majd kattints egy azonos értékű másik halomra."
+let message = isOstromMode()
+  ? "Ostrom indult. Szabadítsd ki a VII-eseket, de óvatosan bánj a két cellával."
   : "Válassz egy lapot, majd kattints a célhelyre.";
 let winModalOpen = false;
 
@@ -73,10 +75,10 @@ function shuffle(cards) {
 
 function createNewGame(mode = loadModePreference()) {
   const normalizedMode = normalizeMode(mode);
-  return normalizedMode === "tablo" ? createNewTabloGame() : createNewClassicGame();
+  return normalizedMode === "ostrom" ? createNewOstromGame() : createNewClassicGame();
 }
 
-function createNewClassicGame(mode = "classic") {
+function createNewClassicGame() {
   const deck = shuffle(createDeck());
   const tableau = Array.from({ length: 6 }, () => []);
   let cursor = 0;
@@ -92,11 +94,12 @@ function createNewClassicGame(mode = "classic") {
 
   const createdAt = Date.now();
   return {
-    mode,
+    mode: "classic",
     tableau,
     stock: deck.slice(cursor).map((card) => ({ ...card, faceUp: false })),
     waste: [],
-    foundations: Object.fromEntries(SUITS.map((suit) => [suit.id, []])),
+    freeCells: [],
+    foundations: createEmptyFoundations(),
     moves: 0,
     startedAt: createdAt,
     elapsedBeforeLoad: 0,
@@ -104,29 +107,30 @@ function createNewClassicGame(mode = "classic") {
     won: false,
     lost: false,
     createdAt,
-    gameId: `${createdAt}-${mode}-${Math.random().toString(36).slice(2, 10)}`,
+    gameId: `${createdAt}-classic-${Math.random().toString(36).slice(2, 10)}`,
   };
 }
 
-function createNewTabloGame() {
-  let deck = shuffle(createDeck());
-  let tableau = dealTablo(deck).tableau;
-  let stock = dealTablo(deck).stock;
+function createNewOstromGame() {
+  const deck = shuffle(createDeck());
+  const tableau = Array.from({ length: 8 }, () => []);
+  let cursor = 0;
 
-  for (let attempt = 0; attempt < 200 && !hasValidTabloMerge(tableau); attempt += 1) {
-    deck = shuffle(createDeck());
-    const dealt = dealTablo(deck);
-    tableau = dealt.tableau;
-    stock = dealt.stock;
+  for (let row = 0; row < 4; row += 1) {
+    for (let column = 0; column < 8; column += 1) {
+      tableau[column].push({ ...deck[cursor], faceUp: true });
+      cursor += 1;
+    }
   }
 
   const createdAt = Date.now();
   return {
-    mode: "tablo",
+    mode: "ostrom",
     tableau,
-    stock,
+    stock: [],
     waste: [],
-    foundations: {},
+    freeCells: Array.from({ length: OSTROM_FREE_CELLS }, () => null),
+    foundations: createEmptyFoundations(),
     moves: 0,
     startedAt: createdAt,
     elapsedBeforeLoad: 0,
@@ -134,15 +138,12 @@ function createNewTabloGame() {
     won: false,
     lost: false,
     createdAt,
-    gameId: `${createdAt}-tablo-${Math.random().toString(36).slice(2, 10)}`,
+    gameId: `${createdAt}-ostrom-${Math.random().toString(36).slice(2, 10)}`,
   };
 }
 
-function dealTablo(deck) {
-  return {
-    tableau: deck.slice(0, 8).map((card) => [{ ...card, faceUp: true }]),
-    stock: deck.slice(8).map((card) => ({ ...card, faceUp: false })),
-  };
+function createEmptyFoundations() {
+  return Object.fromEntries(SUITS.map((suit) => [suit.id, []]));
 }
 
 function cloneState(game) {
@@ -166,10 +167,6 @@ function commit(nextMessage) {
     recordWin(finalSeconds);
     winModalOpen = true;
     message = `Gratulálok, megnyerted ${state.moves} lépésből, ${formatTime(finalSeconds)} alatt!`;
-  } else if (state.lost) {
-    message = isTabloMode()
-      ? "Nincs több összevonható azonos értékű halom. Ez a leosztás elakadt."
-      : nextMessage;
   }
 
   selected = null;
@@ -197,16 +194,15 @@ function loadGame() {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     parsed.mode = normalizeMode(parsed.mode || loadModePreference());
-    if (!Array.isArray(parsed.tableau) || !Array.isArray(parsed.stock)) return null;
-    if (parsed.mode === "classic" && (!parsed.foundations || !Array.isArray(parsed.waste))) return null;
+    if (!Array.isArray(parsed.tableau)) return null;
     parsed.startedAt = Date.now();
     parsed.history = Array.isArray(parsed.history)
-      ? parsed.history.filter((entry) => entry && Array.isArray(entry.tableau) && Array.isArray(entry.stock))
+      ? parsed.history.filter((entry) => entry && Array.isArray(entry.tableau))
       : [];
+    parsed.stock = Array.isArray(parsed.stock) ? parsed.stock : [];
     parsed.waste = Array.isArray(parsed.waste) ? parsed.waste : [];
-    parsed.foundations = parsed.mode === "classic"
-      ? normalizeClassicFoundations(parsed.foundations)
-      : {};
+    parsed.freeCells = parsed.mode === "ostrom" ? normalizeFreeCells(parsed.freeCells) : [];
+    parsed.foundations = normalizeFoundations(parsed.foundations);
     parsed.won = Boolean(parsed.won);
     parsed.lost = Boolean(parsed.lost);
     parsed.createdAt = parsed.createdAt || Date.now();
@@ -217,8 +213,14 @@ function loadGame() {
   }
 }
 
-function normalizeClassicFoundations(foundations) {
+function normalizeFoundations(foundations) {
   return Object.fromEntries(SUITS.map((suit) => [suit.id, Array.isArray(foundations?.[suit.id]) ? foundations[suit.id] : []]));
+}
+
+function normalizeFreeCells(cells) {
+  const normalized = Array.isArray(cells) ? [...cells] : [];
+  while (normalized.length < OSTROM_FREE_CELLS) normalized.push(null);
+  return normalized.slice(0, OSTROM_FREE_CELLS).map((card) => card || null);
 }
 
 function normalizeLeaderboard(entries) {
@@ -256,6 +258,7 @@ function loadStats() {
       : normalizeLeaderboard([{
           seconds: parsed.bestTime,
           moves: parsed.bestMoves || 0,
+          mode: parsed.mode || "classic",
           wonAt: new Date().toISOString(),
           gameId: "migrated-best-time",
         }]);
@@ -381,35 +384,37 @@ function getModeMeta(mode = getCurrentMode()) {
   return MODES[normalizeMode(mode)];
 }
 
-function isTabloMode(mode = getCurrentMode()) {
-  return normalizeMode(mode) === "tablo";
+function isOstromMode(mode = getCurrentMode()) {
+  return normalizeMode(mode) === "ostrom";
 }
 
-function getClassicCompletedCount(game = state) {
+function getCompletedCount(game = state) {
   if (!game?.foundations) return 0;
   return SUITS.reduce((sum, suit) => sum + (Array.isArray(game.foundations[suit.id]) ? game.foundations[suit.id].length : 0), 0);
 }
 
-function getTabloCompletedPileCount(game = state) {
-  if (!Array.isArray(game?.tableau)) return 0;
-  return game.tableau.filter((pile) => pile.length === 4 && isSameRankPile(pile)).length;
+function getFreeCellCount(game = state) {
+  return normalizeFreeCells(game.freeCells).filter((card) => !card).length;
 }
 
-function getTabloGroupedCardCount(game = state) {
-  if (!Array.isArray(game?.tableau)) return 0;
-  return game.tableau.reduce((sum, pile) => sum + (isSameRankPile(pile) ? pile.length : 0), 0);
+function getEmptyColumnCount(game = state, ignoredColumnIndex = null) {
+  return game.tableau.filter((column, index) => index !== ignoredColumnIndex && column.length === 0).length;
 }
 
-function isSameRankPile(pile) {
-  return Array.isArray(pile) && pile.length > 0 && pile.every((card) => card.rankIndex === pile[0].rankIndex);
+function suitGroup(suitId) {
+  return suitMeta(suitId)?.group || suitId;
 }
 
-function canPlaceOnTableau(movingCard, targetCard) {
+function isAlternatingGroup(cardA, cardB) {
+  return suitGroup(cardA.suit) !== suitGroup(cardB.suit);
+}
+
+function canPlaceOnClassicTableau(movingCard, targetCard) {
   if (!targetCard) return movingCard.rankIndex === ACE_INDEX;
   return targetCard.rankIndex === movingCard.rankIndex + 1 && targetCard.suit !== movingCard.suit;
 }
 
-function canMoveStack(stack) {
+function canMoveClassicStack(stack) {
   if (!stack.length || stack.some((card) => !card.faceUp)) return false;
   for (let i = 1; i < stack.length; i += 1) {
     const upperCard = stack[i - 1];
@@ -420,8 +425,34 @@ function canMoveStack(stack) {
   return true;
 }
 
-function canPlaceOnFoundation(card) {
-  const foundation = state.foundations[card.suit];
+function canPlaceOnOstromTableau(movingCard, targetCard) {
+  if (!targetCard) return movingCard.rankIndex === ACE_INDEX || movingCard.rankIndex === KING_INDEX;
+  return targetCard.rankIndex === movingCard.rankIndex + 1 && isAlternatingGroup(movingCard, targetCard);
+}
+
+function canMoveOstromStack(stack) {
+  if (!stack.length || stack.some((card) => !card.faceUp)) return false;
+  for (let i = 1; i < stack.length; i += 1) {
+    const upperCard = stack[i - 1];
+    const lowerCard = stack[i];
+    if (upperCard.rankIndex !== lowerCard.rankIndex + 1) return false;
+    if (!isAlternatingGroup(upperCard, lowerCard)) return false;
+  }
+  return true;
+}
+
+function getOstromMoveCapacity(targetColumnIndex = null) {
+  const freeCells = getFreeCellCount();
+  const emptyColumns = getEmptyColumnCount(state, targetColumnIndex);
+  return (freeCells + 1) * (2 ** emptyColumns);
+}
+
+function canMoveOstromStackWithCapacity(stack, targetColumnIndex = null) {
+  return canMoveOstromStack(stack) && stack.length <= getOstromMoveCapacity(targetColumnIndex);
+}
+
+function canPlaceOnFoundation(card, game = state) {
+  const foundation = game.foundations[card.suit] || [];
   const expectedRank = foundation.length === 0
     ? FOUNDATION_START
     : foundation[foundation.length - 1].rankIndex + 1;
@@ -434,13 +465,63 @@ function flipTopIfNeeded(column) {
   if (!top.faceUp) top.faceUp = true;
 }
 
-function drawFromStock() {
-  if (state.won || state.lost) return;
-  if (isTabloMode()) {
-    fillFirstEmptyTabloSlot();
+function undoMove() {
+  const previous = state.history.pop();
+  if (!previous) {
+    showMessage("Még nincs visszavonható lépés.");
     return;
   }
+  const elapsed = getElapsedSeconds();
+  const currentHistory = state.history;
+  state = {
+    ...previous,
+    history: currentHistory,
+    elapsedBeforeLoad: elapsed,
+    startedAt: Date.now(),
+  };
+  state.mode = normalizeMode(state.mode || DEFAULT_MODE);
+  state.stock = Array.isArray(state.stock) ? state.stock : [];
+  state.waste = Array.isArray(state.waste) ? state.waste : [];
+  state.freeCells = state.mode === "ostrom" ? normalizeFreeCells(state.freeCells) : [];
+  state.foundations = normalizeFoundations(state.foundations);
+  state.lost = false;
+  winModalOpen = false;
+  message = "Visszavontad az előző lépést.";
+  selected = null;
+  saveGame();
+  render();
+}
 
+function restartGame(mode = getCurrentMode(), askConfirm = true) {
+  const nextMode = normalizeMode(mode);
+  const ok = !askConfirm || confirm("Új játékot indítasz? A jelenlegi állás elveszik.");
+  if (!ok) return;
+  recordAbandonedGameIfNeeded();
+  saveModePreference(nextMode);
+  state = createNewGame(nextMode);
+  recordGameStarted();
+  selected = null;
+  winModalOpen = false;
+  message = nextMode === "ostrom"
+    ? "Ostrom – Nehéz indult. Minden lap látszik, de csak két szabad cellád van."
+    : "Új játék indult. Sok sikert!";
+  saveGame();
+  render();
+}
+
+function changeMode(mode) {
+  const nextMode = normalizeMode(mode);
+  if (nextMode === getCurrentMode()) return;
+  const ok = confirm(`Átváltasz erre: ${getModeMeta(nextMode).name}? Ez új játékot indít.`);
+  if (!ok) {
+    render();
+    return;
+  }
+  restartGame(nextMode, false);
+}
+
+function drawFromStock() {
+  if (state.won || state.lost || isOstromMode()) return;
   selected = null;
 
   if (state.stock.length === 0) {
@@ -461,192 +542,98 @@ function drawFromStock() {
   commit("Húztál egy lapot.");
 }
 
-function fillFirstEmptyTabloSlot() {
-  const emptyIndex = state.tableau.findIndex((pile) => pile.length === 0);
-  if (emptyIndex === -1) {
-    showMessage("Most nincs üres hely. Előbb vonj össze két azonos értékű halmot.");
-    return;
-  }
-  if (!state.stock.length) {
-    showMessage("A húzópakli elfogyott.");
-    return;
-  }
-  saveHistory();
-  refillTabloSlot(emptyIndex);
-  commit("Feltöltöttél egy üres tablóhelyet.");
-}
-
-function undoMove() {
-  const previous = state.history.pop();
-  if (!previous) {
-    showMessage("Még nincs visszavonható lépés.");
-    return;
-  }
-  const elapsed = getElapsedSeconds();
-  const currentHistory = state.history;
-  state = {
-    ...previous,
-    history: currentHistory,
-    elapsedBeforeLoad: elapsed,
-    startedAt: Date.now(),
-  };
-  state.mode = normalizeMode(state.mode || DEFAULT_MODE);
-  state.waste = Array.isArray(state.waste) ? state.waste : [];
-  state.foundations = state.mode === "classic" ? normalizeClassicFoundations(state.foundations) : {};
-  state.lost = false;
-  winModalOpen = false;
-  message = "Visszavontad az előző lépést.";
-  selected = null;
-  saveGame();
-  render();
-}
-
-function restartGame(mode = getCurrentMode(), askConfirm = true) {
-  const nextMode = normalizeMode(mode);
-  const ok = !askConfirm || confirm("Új játékot indítasz? A jelenlegi állás elveszik.");
-  if (!ok) return;
-  recordAbandonedGameIfNeeded();
-  saveModePreference(nextMode);
-  state = createNewGame(nextMode);
-  recordGameStarted();
-  selected = null;
-  winModalOpen = false;
-  message = nextMode === "tablo"
-    ? "Király passziánsz indult. Keress azonos értékű halmokat!"
-    : "Új játék indult. Sok sikert!";
-  saveGame();
-  render();
-}
-
-function changeMode(mode) {
-  const nextMode = normalizeMode(mode);
-  if (nextMode === getCurrentMode()) return;
-  const ok = confirm(`Átváltasz erre: ${getModeMeta(nextMode).name}? Ez új játékot indít.`);
-  if (!ok) {
-    render();
-    return;
-  }
-  restartGame(nextMode, false);
-}
-
 function selectFromTableau(columnIndex, cardIndex) {
-  if (state.won || state.lost || isTabloMode()) return;
+  if (state.won || state.lost) return;
+  if (isOstromMode()) {
+    selectFromOstromTableau(columnIndex, cardIndex);
+    return;
+  }
+
   const column = state.tableau[columnIndex];
   const stack = column.slice(cardIndex);
   if (!stack[0]?.faceUp) return;
 
-  if (!canMoveStack(stack)) {
+  if (!canMoveClassicStack(stack)) {
     showMessage("Ezt a sort nem lehet együtt mozgatni: csak csökkenő, felfordított, eltérő színű sor mozgatható.");
     return;
   }
   selected = { source: "tableau", columnIndex, cardIndex, cards: stack.map((card) => card.id) };
   showMessage(`${cardName(stack[0])} kijelölve${stack.length > 1 ? `, ${stack.length} lapos sorral` : ""}.`);
-}
-
-function handleTabloPileClick(pileIndex) {
-  if (state.won || state.lost || !isTabloMode()) return;
-  const pile = state.tableau[pileIndex];
-
-  if (!pile.length) {
-    showMessage(state.stock.length ? "Ez a hely most üres. Sikeres összevonás után automatikusan jön ide új lap." : "Ez a hely üres, a húzópakli pedig elfogyott.");
-    return;
-  }
-
-  if (!selected || selected.source !== "tablo") {
-    selectTabloPile(pileIndex);
-    return;
-  }
-
-  if (selected.pileIndex === pileIndex) {
-    clearSelection();
-    return;
-  }
-
-  mergeTabloPiles(selected.pileIndex, pileIndex);
-}
-
-function selectTabloPile(pileIndex) {
-  const pile = state.tableau[pileIndex];
-  if (!pile?.length) return;
-  selected = { source: "tablo", pileIndex, cards: pile.map((card) => card.id) };
-  const rank = RANKS[pile[0].rankIndex];
-  showMessage(`${rank} halom kijelölve (${pile.length}/4). Tedd rá egy másik ${rank} halomra.`);
   render();
 }
 
-function canMergeTabloPiles(sourceIndex, targetIndex, game = state) {
-  if (sourceIndex === targetIndex) return false;
-  const source = game.tableau[sourceIndex];
-  const target = game.tableau[targetIndex];
-  if (!source?.length || !target?.length) return false;
-  if (!isSameRankPile(source) || !isSameRankPile(target)) return false;
-  if (source[0].rankIndex !== target[0].rankIndex) return false;
-  return source.length + target.length <= SUITS.length;
-}
+function selectFromOstromTableau(columnIndex, cardIndex) {
+  const column = state.tableau[columnIndex];
+  const stack = column.slice(cardIndex);
+  if (!stack[0]?.faceUp) return;
 
-function hasValidTabloMerge(tableau = state.tableau) {
-  const game = { tableau };
-  for (let sourceIndex = 0; sourceIndex < tableau.length; sourceIndex += 1) {
-    for (let targetIndex = 0; targetIndex < tableau.length; targetIndex += 1) {
-      if (canMergeTabloPiles(sourceIndex, targetIndex, game)) return true;
-    }
-  }
-  return false;
-}
-
-function mergeTabloPiles(sourceIndex, targetIndex) {
-  if (!canMergeTabloPiles(sourceIndex, targetIndex)) {
-    const source = state.tableau[sourceIndex];
-    const target = state.tableau[targetIndex];
-    if (!target?.length) {
-      showMessage("Üres helyre nem lehet halmot tenni; oda csak a húzópakliból érkezik új lap.");
-    } else if (source?.[0]?.rankIndex !== target?.[0]?.rankIndex) {
-      showMessage("Csak azonos értékű halmokat lehet összevonni.");
-    } else {
-      showMessage("Ebbe a halomba már nem férne bele négy lapnál több.");
-    }
+  if (!canMoveOstromStack(stack)) {
+    showMessage("Ez nem mozgatható sor: Ostromban csökkenő sorrend és piros/tök ↔ zöld/makk váltakozás kell.");
     return;
   }
 
-  saveHistory();
-  const source = state.tableau[sourceIndex].map((card) => ({ ...card, faceUp: true }));
-  const target = state.tableau[targetIndex].map((card) => ({ ...card, faceUp: true }));
-  const rankLabel = RANKS[source[0].rankIndex];
-  state.tableau[targetIndex] = [...target, ...source];
-  state.tableau[sourceIndex] = [];
-  const drew = refillTabloSlot(sourceIndex);
-  const targetSize = state.tableau[targetIndex].length;
-  commit(drew
-    ? `${rankLabel} halmokat összevontad (${targetSize}/4), az üres helyre új lap érkezett.`
-    : `${rankLabel} halmokat összevontad (${targetSize}/4). A húzópakli már üres.`);
-}
+  if (!canMoveOstromStackWithCapacity(stack)) {
+    showMessage(`Ez a ${stack.length} lapos sor túl hosszú a mostani mozgástérhez. Szabad cellák/üres oszlopok alapján most legfeljebb ${getOstromMoveCapacity()} lap mozgatható.`);
+    return;
+  }
 
-function refillTabloSlot(index) {
-  if (state.tableau[index]?.length || !state.stock.length) return false;
-  const card = state.stock.pop();
-  state.tableau[index] = [{ ...card, faceUp: true }];
-  return true;
+  selected = { source: "ostromTableau", columnIndex, cardIndex, cards: stack.map((card) => card.id) };
+  showMessage(`${cardName(stack[0])} kijelölve${stack.length > 1 ? `, ${stack.length} lapos ostromsorral` : ""}.`);
+  render();
 }
 
 function selectFromWaste() {
-  if (state.won || state.lost || isTabloMode()) return;
+  if (state.won || state.lost || isOstromMode()) return;
   const card = state.waste[state.waste.length - 1];
   if (!card) return;
   selected = { source: "waste", cards: [card.id] };
   showMessage(`${cardName(card)} kijelölve a dobópakliból.`);
+  render();
 }
 
 function selectFromFoundation(suitId) {
-  if (state.won || state.lost || isTabloMode()) return;
+  if (state.won || state.lost || isOstromMode()) return;
   const foundation = state.foundations[suitId];
   const card = foundation[foundation.length - 1];
   if (!card) return;
   selected = { source: "foundation", suitId, cards: [card.id] };
   showMessage(`${cardName(card)} kijelölve a gyűjtőpakliból.`);
+  render();
+}
+
+function handleFreeCellClick(cellIndex) {
+  if (!isOstromMode() || state.won || state.lost) return;
+  const cellCard = state.freeCells[cellIndex];
+
+  if (selected) {
+    if (selected.source === "freeCell" && selected.cellIndex === cellIndex) {
+      clearSelection();
+      return;
+    }
+    moveToFreeCell(cellIndex);
+    return;
+  }
+
+  if (!cellCard) {
+    showMessage("Ez a szabad cella üres. Ide csak egyetlen lapot tehetsz félre.");
+    return;
+  }
+  selected = { source: "freeCell", cellIndex, cards: [cellCard.id] };
+  showMessage(`${cardName(cellCard)} kijelölve a szabad cellából.`);
+  render();
 }
 
 function handleFoundationClick(suitId) {
-  if (state.won || state.lost || isTabloMode()) return;
+  if (state.won || state.lost) return;
+
+  if (isOstromMode()) {
+    if (!selected) {
+      showMessage("Ostrom – Nehéz módban a gyűjtőből nem lehet visszavenni lapot. Jelölj ki egy lapot az oszlopból vagy cellából.");
+      return;
+    }
+    moveToFoundation(suitId);
+    return;
+  }
 
   if (selected) {
     if (selected.source === "foundation" && selected.suitId === suitId) {
@@ -662,7 +649,6 @@ function handleFoundationClick(suitId) {
 
 function getSelectedCards() {
   if (!selected) return [];
-  if (selected.source === "tablo") return state.tableau[selected.pileIndex] || [];
   if (selected.source === "waste") {
     const card = state.waste[state.waste.length - 1];
     return card ? [card] : [];
@@ -671,6 +657,13 @@ function getSelectedCards() {
     const pile = state.foundations[selected.suitId];
     const card = pile[pile.length - 1];
     return card ? [card] : [];
+  }
+  if (selected.source === "freeCell") {
+    const card = state.freeCells[selected.cellIndex];
+    return card ? [card] : [];
+  }
+  if (selected.source === "ostromTableau") {
+    return state.tableau[selected.columnIndex].slice(selected.cardIndex);
   }
   return state.tableau[selected.columnIndex].slice(selected.cardIndex);
 }
@@ -687,17 +680,49 @@ function removeSelectedCards() {
   if (selected.source === "foundation") {
     return [state.foundations[selected.suitId].pop()];
   }
+  if (selected.source === "freeCell") {
+    const card = state.freeCells[selected.cellIndex];
+    state.freeCells[selected.cellIndex] = null;
+    return [card];
+  }
   const column = state.tableau[selected.columnIndex];
   const moving = column.splice(selected.cardIndex);
-  flipTopIfNeeded(column);
+  if (!isOstromMode()) flipTopIfNeeded(column);
   return moving;
 }
 
-function moveToTableau(targetColumnIndex) {
-  if (isTabloMode()) {
-    handleTabloPileClick(targetColumnIndex);
+function moveToFreeCell(cellIndex) {
+  if (!isOstromMode()) return;
+  if (!selected) {
+    showMessage("Előbb jelölj ki egy lapot.");
     return;
   }
+  if (state.freeCells[cellIndex]) {
+    showMessage("Ez a szabad cella már foglalt.");
+    return;
+  }
+  const moving = getSelectedCards();
+  if (moving.length !== 1) {
+    showMessage("Szabad cellába egyszerre csak egy lap tehető.");
+    return;
+  }
+  if (selected.source === "foundation") {
+    showMessage("Ostrom – Nehéz módban a gyűjtőből nem lehet visszavenni lapot.");
+    return;
+  }
+
+  saveHistory();
+  const [removed] = removeSelectedCards();
+  state.freeCells[cellIndex] = { ...removed, faceUp: true };
+  commit(`${cardName(removed)} félretéve a ${cellIndex + 1}. szabad cellába.`);
+}
+
+function moveToTableau(targetColumnIndex) {
+  if (isOstromMode()) {
+    moveToOstromTableau(targetColumnIndex);
+    return;
+  }
+
   if (!selected) {
     showMessage("Előbb jelölj ki egy felfordított lapot vagy sort.");
     return;
@@ -712,11 +737,11 @@ function moveToTableau(targetColumnIndex) {
   const targetColumn = state.tableau[targetColumnIndex];
   const targetCard = targetColumn[targetColumn.length - 1];
 
-  if (!canMoveStack(moving)) {
+  if (!canMoveClassicStack(moving)) {
     showMessage("Ez a kijelölt sor nem mozgatható.");
     return;
   }
-  if (!canPlaceOnTableau(moving[0], targetCard)) {
+  if (!canPlaceOnClassicTableau(moving[0], targetCard)) {
     showMessage(targetCard
       ? `${cardName(moving[0])} nem tehető erre: ${cardName(targetCard)}. Csökkenő sorrend kell, és azonos szín nem kerülhet egymás alá.`
       : "Üres oszlopra csak Ász kerülhet.");
@@ -727,6 +752,42 @@ function moveToTableau(targetColumnIndex) {
   const removed = removeSelectedCards();
   state.tableau[targetColumnIndex].push(...removed.map((card) => ({ ...card, faceUp: true })));
   commit("Sikeres mozgatás az oszlopok között.");
+}
+
+function moveToOstromTableau(targetColumnIndex) {
+  if (!selected) {
+    showMessage("Előbb jelölj ki egy lapot vagy szabályos sort.");
+    return;
+  }
+  if (selected.source === "ostromTableau" && selected.columnIndex === targetColumnIndex) {
+    clearSelection();
+    return;
+  }
+
+  const moving = getSelectedCards();
+  if (!moving.length) return;
+  const targetColumn = state.tableau[targetColumnIndex];
+  const targetCard = targetColumn[targetColumn.length - 1];
+
+  if (!canMoveOstromStack(moving)) {
+    showMessage("Ez a kijelölt sor nem mozgatható Ostrom-sorként.");
+    return;
+  }
+  if (!canMoveOstromStackWithCapacity(moving, targetColumnIndex)) {
+    showMessage(`Ehhez kevés a mozgástér. Most legfeljebb ${getOstromMoveCapacity(targetColumnIndex)} lapos sor mozgatható ide.`);
+    return;
+  }
+  if (!canPlaceOnOstromTableau(moving[0], targetCard)) {
+    showMessage(targetCard
+      ? `${cardName(moving[0])} nem tehető erre: ${cardName(targetCard)}. Csökkenő sorrend és piros/tök ↔ zöld/makk váltás kell.`
+      : "Üres oszlopra Ostrom – Nehéz módban csak Ász vagy Király kerülhet.");
+    return;
+  }
+
+  saveHistory();
+  const removed = removeSelectedCards();
+  state.tableau[targetColumnIndex].push(...removed.map((card) => ({ ...card, faceUp: true })));
+  commit("Sikeres ostromlépés az oszlopok között.");
 }
 
 function moveToFoundation(suitId) {
@@ -759,20 +820,11 @@ function moveToFoundation(suitId) {
 }
 
 function checkWin() {
-  if (isTabloMode()) {
-    const piles = state.tableau;
-    const completeRanks = new Set(piles.filter((pile) => pile.length === SUITS.length && isSameRankPile(pile)).map((pile) => pile[0].rankIndex));
-    return state.stock.length === 0
-      && piles.length === RANKS.length
-      && piles.every((pile) => pile.length === SUITS.length && isSameRankPile(pile))
-      && completeRanks.size === RANKS.length;
-  }
-  return getClassicCompletedCount() === SUITS.length * RANKS.length;
+  return getCompletedCount() === SUITS.length * RANKS.length;
 }
 
 function checkLost() {
-  if (!isTabloMode() || checkWin()) return false;
-  return !hasValidTabloMerge(state.tableau);
+  return false;
 }
 
 function showMessage(nextMessage) {
@@ -784,21 +836,33 @@ function isSelectedCard(card) {
   return selected?.cards?.includes(card.id);
 }
 
-function isValidTargetTableau(index) {
-  if (!selected || isTabloMode()) return false;
+function isValidTargetClassicTableau(index) {
+  if (!selected || isOstromMode()) return false;
   const moving = getSelectedCards();
   const target = state.tableau[index];
-  return moving.length > 0 && canMoveStack(moving) && canPlaceOnTableau(moving[0], target[target.length - 1]);
+  return moving.length > 0 && canMoveClassicStack(moving) && canPlaceOnClassicTableau(moving[0], target[target.length - 1]);
+}
+
+function isValidTargetOstromTableau(index) {
+  if (!selected || !isOstromMode()) return false;
+  const moving = getSelectedCards();
+  const target = state.tableau[index];
+  return moving.length > 0
+    && canMoveOstromStack(moving)
+    && canMoveOstromStackWithCapacity(moving, index)
+    && canPlaceOnOstromTableau(moving[0], target[target.length - 1]);
 }
 
 function isValidTargetFoundation(suitId) {
-  if (!selected || isTabloMode()) return false;
+  if (!selected) return false;
   const moving = getSelectedCards();
   return moving.length === 1 && moving[0].suit === suitId && canPlaceOnFoundation(moving[0]);
 }
 
-function isValidTargetTabloPile(index) {
-  return selected?.source === "tablo" && canMergeTabloPiles(selected.pileIndex, index);
+function isValidTargetFreeCell(index) {
+  if (!selected || !isOstromMode() || state.freeCells[index]) return false;
+  const moving = getSelectedCards();
+  return moving.length === 1 && selected.source !== "foundation";
 }
 
 function renderCard(card, options = {}) {
@@ -857,7 +921,7 @@ function renderWaste() {
 }
 
 function renderFoundation(suit) {
-  const pile = state.foundations[suit.id];
+  const pile = state.foundations[suit.id] || [];
   const top = pile[pile.length - 1];
   const highlight = isValidTargetFoundation(suit.id) ? "highlight" : "";
   const nextRank = pile.length < RANKS.length ? RANKS[pile.length] : "kész";
@@ -871,11 +935,24 @@ function renderFoundation(suit) {
   `;
 }
 
+function renderFreeCell(card, cellIndex) {
+  const highlight = isValidTargetFreeCell(cellIndex) ? "highlight" : "";
+  const selectedCell = selected?.source === "freeCell" && selected.cellIndex === cellIndex;
+  return `
+    <section>
+      <p class="pile-label">Cella ${cellIndex + 1}</p>
+      <div class="card-slot free-cell-slot ${highlight} ${selectedCell ? "selected-cell" : ""}" onclick="handleFreeCellClick(${cellIndex})">
+        ${card ? renderCard(card) : `<span>Szabad<br>cella</span>`}
+      </div>
+    </section>
+  `;
+}
+
 function renderClassicTableau() {
   return `
-    <section class="tableau" aria-label="Oszlopok">
+    <section class="tableau classic-tableau" aria-label="Oszlopok">
       ${state.tableau.map((column, columnIndex) => {
-        const highlight = isValidTargetTableau(columnIndex) ? "highlight" : "";
+        const highlight = isValidTargetClassicTableau(columnIndex) ? "highlight" : "";
         const cards = column.length
           ? column.map((card, cardIndex) => renderCard(card, {
               extraClass: cardIndex ? "stack-card" : "",
@@ -892,55 +969,23 @@ function renderClassicTableau() {
   `;
 }
 
-function renderTabloStock() {
-  const emptySlots = state.tableau.filter((pile) => pile.length === 0).length;
-  const canFill = emptySlots > 0 && state.stock.length > 0;
+function renderOstromTableau() {
   return `
-    <section class="tablo-stock-panel">
-      <div>
-        <p class="pile-label">Húzópakli</p>
-        <div class="tablo-stock-card ${state.stock.length ? "" : "is-empty"}" onclick="drawFromStock()">
-          ${state.stock.length ? renderCard({ faceUp: false }) : "Üres"}
-        </div>
-      </div>
-      <div class="tablo-rule-box">
-        <strong>Szabály</strong>
-        <span>Csak azonos értékű halom tehető egymásra. Egy halom legfeljebb 4 lapos lehet.</span>
-        <span>${emptySlots ? `Üres hely: ${emptySlots}` : "Nincs üres hely"} · Húzó: ${state.stock.length}</span>
-        ${canFill ? `<button class="btn" onclick="drawFromStock()">Üres hely feltöltése</button>` : ""}
-      </div>
-    </section>
-  `;
-}
-
-function renderTabloPile(pile, pileIndex) {
-  const selectedPile = selected?.source === "tablo" && selected.pileIndex === pileIndex;
-  const highlight = isValidTargetTabloPile(pileIndex) ? "highlight" : "";
-  const complete = pile.length === SUITS.length && isSameRankPile(pile);
-  const label = pile.length ? `${RANKS[pile[0].rankIndex]} · ${pile.length}/4` : "Üres";
-  const cards = pile.length
-    ? pile.map((card, cardIndex) => renderCard(card, { extraClass: cardIndex ? "tablo-stack-card" : "" })).join("")
-    : `<div class="column-empty-hint">Üres<br>${state.stock.length ? "új lap jön" : "pakli elfogyott"}</div>`;
-  return `
-    <div class="tablo-pile ${selectedPile ? "selected-pile" : ""} ${highlight} ${complete ? "complete" : ""}" onclick="handleTabloPileClick(${pileIndex})" aria-label="${pileIndex + 1}. tablóhely, ${label}">
-      <div class="tablo-pile-head">
-        <span>${pileIndex + 1}. hely</span>
-        <strong>${label}</strong>
-      </div>
-      <div class="tablo-pile-cards">
-        ${cards}
-      </div>
-    </div>
-  `;
-}
-
-function renderTabloBoard() {
-  return `
-    <section class="board tablo-board">
-      ${renderTabloStock()}
-      <section class="tablo-tableau" aria-label="Tabló">
-        ${state.tableau.map(renderTabloPile).join("")}
-      </section>
+    <section class="tableau ostrom-tableau" aria-label="Ostrom oszlopok">
+      ${state.tableau.map((column, columnIndex) => {
+        const highlight = isValidTargetOstromTableau(columnIndex) ? "highlight" : "";
+        const cards = column.length
+          ? column.map((card, cardIndex) => renderCard(card, {
+              extraClass: cardIndex ? "ostrom-stack-card" : "",
+              click: `onclick=\"event.stopPropagation(); selectFromTableau(${columnIndex}, ${cardIndex})\"`,
+            })).join("")
+          : `<div class="column-empty-hint">Üres<br>Ász / Király</div>`;
+        return `
+          <div class="column ostrom-column ${highlight}" onclick="moveToTableau(${columnIndex})" aria-label="${columnIndex + 1}. ostrom oszlop">
+            ${cards}
+          </div>
+        `;
+      }).join("")}
     </section>
   `;
 }
@@ -951,18 +996,18 @@ function formatWinRate() {
 }
 
 function renderStats() {
-  const completed = isTabloMode() ? `${getTabloCompletedPileCount()}/8` : `${getClassicCompletedCount()}/32`;
-  const progressLabel = isTabloMode() ? "Négyes" : "Kész";
-  const stockLabel = isTabloMode() ? "Húzó" : "Nyert";
-  const stockValue = isTabloMode() ? state.stock.length : `${playerStats.gamesWon}/${playerStats.gamesStarted}`;
+  const completed = `${getCompletedCount()}/32`;
+  const thirdLabel = isOstromMode() ? "Gyűjtő" : "Kész";
+  const fourthLabel = isOstromMode() ? "Cellák" : "Nyert";
+  const fourthValue = isOstromMode() ? `${getFreeCellCount()}/${OSTROM_FREE_CELLS}` : `${playerStats.gamesWon}/${playerStats.gamesStarted}`;
   const bestTime = playerStats.bestTime == null ? "–" : formatTime(playerStats.bestTime);
   const bestMoves = playerStats.bestMoves == null ? "–" : playerStats.bestMoves;
   return `
     <section class="stats" aria-label="Játékállapot">
       <div class="stat-card"><span class="stat-label">Lépés</span><span class="stat-value">${state.moves}</span></div>
       <div class="stat-card"><span class="stat-label">Idő</span><span class="stat-value" id="timer">${formatTime(getElapsedSeconds())}</span></div>
-      <div class="stat-card"><span class="stat-label">${progressLabel}</span><span class="stat-value">${completed}</span></div>
-      <div class="stat-card"><span class="stat-label">${stockLabel}</span><span class="stat-value">${stockValue}</span></div>
+      <div class="stat-card"><span class="stat-label">${thirdLabel}</span><span class="stat-value">${completed}</span></div>
+      <div class="stat-card"><span class="stat-label">${fourthLabel}</span><span class="stat-value">${fourthValue}</span></div>
       <div class="stat-card"><span class="stat-label">Arány</span><span class="stat-value">${formatWinRate()}</span></div>
       <div class="stat-card"><span class="stat-label">Legjobb</span><span class="stat-value">${bestTime} · ${bestMoves}</span></div>
     </section>
@@ -993,8 +1038,8 @@ function renderLeaderboard() {
 
 function renderWinModal() {
   const open = state.won && winModalOpen;
-  const winText = isTabloMode()
-    ? "Minden érték külön négyes halomba került."
+  const winText = isOstromMode()
+    ? "Az Ostrom összes lapja felkerült a gyűjtőpaklikba."
     : "Az összes magyar kártya a gyűjtőpaklikba került.";
   return `
     <div class="modal-backdrop ${open ? "open" : ""}">
@@ -1040,11 +1085,30 @@ function renderClassicBoard() {
   `;
 }
 
+function renderOstromBoard() {
+  return `
+    <section class="board ostrom-board">
+      <div class="top-row ostrom-row">
+        ${state.freeCells.map(renderFreeCell).join("")}
+        <section class="foundation-grid ostrom-foundations" aria-label="Gyűjtőpaklik">
+          ${SUITS.map(renderFoundation).join("")}
+        </section>
+      </div>
+      <div class="ostrom-rule-box">
+        <strong>Ostrom – Nehéz</strong>
+        <span>Építés oszlopban: Ász → Király → Felső → Alsó → X → IX → VIII → VII, mindig piros/tök ↔ zöld/makk váltással.</span>
+        <span>Üres oszlopra csak Ász vagy Király mehet. Gyűjtő: VII-től Ászig. Gyűjtőből nincs visszavétel.</span>
+      </div>
+      ${renderOstromTableau()}
+    </section>
+  `;
+}
+
 function render() {
   const mode = getCurrentMode();
   const modeMeta = getModeMeta(mode);
   app.innerHTML = `
-    <main class="app-shell ${isTabloMode(mode) ? "tablo-shell" : ""}">
+    <main class="app-shell ${isOstromMode(mode) ? "ostrom-shell" : ""}">
       <header class="header">
         <div class="title-wrap">
           <h1>${modeMeta.name}</h1>
@@ -1061,7 +1125,7 @@ function render() {
 
       ${renderInstallBanner()}
       ${renderStats()}
-      ${isTabloMode(mode) ? renderTabloBoard() : renderClassicBoard()}
+      ${isOstromMode(mode) ? renderOstromBoard() : renderClassicBoard()}
 
       <p class="message" aria-live="polite">${escapeHtml(message)}</p>
       ${renderLeaderboard()}
@@ -1113,10 +1177,11 @@ window.drawFromStock = drawFromStock;
 window.selectFromWaste = selectFromWaste;
 window.selectFromFoundation = selectFromFoundation;
 window.handleFoundationClick = handleFoundationClick;
+window.handleFreeCellClick = handleFreeCellClick;
 window.selectFromTableau = selectFromTableau;
-window.handleTabloPileClick = handleTabloPileClick;
 window.moveToTableau = moveToTableau;
 window.moveToFoundation = moveToFoundation;
+window.moveToFreeCell = moveToFreeCell;
 window.restartGame = restartGame;
 window.changeMode = changeMode;
 window.undoMove = undoMove;
@@ -1126,7 +1191,7 @@ window.closeWinModal = closeWinModal;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js?v=tablo", { updateViaCache: "none" })
+    navigator.serviceWorker.register("sw.js?v=ostrom", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(() => {
         console.info("A service worker regisztráció nem sikerült. Helyi file:// megnyitásnál ez normális.");

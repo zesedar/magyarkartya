@@ -1,7 +1,7 @@
 {
-  "name": "Magyar Passziánsz – Király passziánsz",
+  "name": "Magyar Passziánsz – Ostrom",
   "short_name": "Passziánsz",
-  "description": "Magyar kártyás passziánsz és Király/Tabló passziánsz egyjátékos PWA-ként.",
+  "description": "Magyar kártyás passziánsz és Ostrom – Nehéz passziánsz egyjátékos PWA-ként.",
   "lang": "hu-HU",
   "start_url": ".",
   "scope": ".",
