@@ -1,6 +1,6 @@
-const STORAGE_KEY = "magyar-passziansz-v5-ketiranyu-torony";
-const STATS_KEY = "magyar-passziansz-stats-v1";
-const MODE_KEY = "magyar-passziansz-mode-v1";
+const STORAGE_KEY = "magyar-passziansz-v6-tablo";
+const STATS_KEY = "magyar-passziansz-stats-v2";
+const MODE_KEY = "magyar-passziansz-mode-v2";
 const HISTORY_LIMIT = 80;
 const LEADERBOARD_LIMIT = 10;
 
@@ -19,7 +19,7 @@ const RANK_ASSET_NAMES = ["seven", "eight", "nine", "ten", "unter", "ober", "kin
 const CARD_BACK_IMAGE = `${CARD_ASSET_DIR}/back.${CARD_ASSET_EXT}`;
 const FOUNDATION_START = 0;
 const ACE_INDEX = 7;
-const DEFAULT_MODE = "tower";
+const DEFAULT_MODE = "tablo";
 
 const MODES = {
   classic: {
@@ -28,17 +28,12 @@ const MODES = {
     shortName: "Klasszikus",
     description: "Gyűjtsd fel színenként VII-től Ászig; oszlopban azonos szín nem kerülhet egymás alá.",
   },
-  tower: {
-    id: "tower",
-    name: "Kétirányú torony",
-    shortName: "Kétirányú",
-    description: "Színenként két torony épül: az egyik VII-től felfelé, a másik Ásztól lefelé. Döntsd el, melyik lap melyik toronyba kerüljön.",
+  tablo: {
+    id: "tablo",
+    name: "Király passziánsz",
+    shortName: "Király / Tabló",
+    description: "Nyolc nyitott halomban azonos értékű lapokat vonhatsz össze. A cél, hogy minden érték külön négyes kupacba kerüljön.",
   },
-};
-
-const FOUNDATION_DIRECTIONS = {
-  up: { id: "up", name: "Felfelé", icon: "↑", startRankIndex: FOUNDATION_START, step: 1 },
-  down: { id: "down", name: "Lefelé", icon: "↓", startRankIndex: ACE_INDEX, step: -1 },
 };
 
 const app = document.querySelector("#app");
@@ -50,7 +45,9 @@ if (!state) {
   recordGameStarted();
 }
 let selected = null;
-let message = "Válassz egy lapot, majd kattints a célhelyre.";
+let message = getCurrentMode() === "tablo"
+  ? "Válassz egy halmot, majd kattints egy azonos értékű másik halomra."
+  : "Válassz egy lapot, majd kattints a célhelyre.";
 let winModalOpen = false;
 
 function createDeck() {
@@ -76,6 +73,10 @@ function shuffle(cards) {
 
 function createNewGame(mode = loadModePreference()) {
   const normalizedMode = normalizeMode(mode);
+  return normalizedMode === "tablo" ? createNewTabloGame() : createNewClassicGame();
+}
+
+function createNewClassicGame(mode = "classic") {
   const deck = shuffle(createDeck());
   const tableau = Array.from({ length: 6 }, () => []);
   let cursor = 0;
@@ -91,18 +92,56 @@ function createNewGame(mode = loadModePreference()) {
 
   const createdAt = Date.now();
   return {
-    mode: normalizedMode,
+    mode,
     tableau,
     stock: deck.slice(cursor).map((card) => ({ ...card, faceUp: false })),
     waste: [],
-    foundations: createEmptyFoundations(normalizedMode),
+    foundations: Object.fromEntries(SUITS.map((suit) => [suit.id, []])),
     moves: 0,
     startedAt: createdAt,
     elapsedBeforeLoad: 0,
     history: [],
     won: false,
+    lost: false,
     createdAt,
-    gameId: `${createdAt}-${normalizedMode}-${Math.random().toString(36).slice(2, 10)}`,
+    gameId: `${createdAt}-${mode}-${Math.random().toString(36).slice(2, 10)}`,
+  };
+}
+
+function createNewTabloGame() {
+  let deck = shuffle(createDeck());
+  let tableau = dealTablo(deck).tableau;
+  let stock = dealTablo(deck).stock;
+
+  for (let attempt = 0; attempt < 200 && !hasValidTabloMerge(tableau); attempt += 1) {
+    deck = shuffle(createDeck());
+    const dealt = dealTablo(deck);
+    tableau = dealt.tableau;
+    stock = dealt.stock;
+  }
+
+  const createdAt = Date.now();
+  return {
+    mode: "tablo",
+    tableau,
+    stock,
+    waste: [],
+    foundations: {},
+    moves: 0,
+    startedAt: createdAt,
+    elapsedBeforeLoad: 0,
+    history: [],
+    won: false,
+    lost: false,
+    createdAt,
+    gameId: `${createdAt}-tablo-${Math.random().toString(36).slice(2, 10)}`,
+  };
+}
+
+function dealTablo(deck) {
+  return {
+    tableau: deck.slice(0, 8).map((card) => [{ ...card, faceUp: true }]),
+    stock: deck.slice(8).map((card) => ({ ...card, faceUp: false })),
   };
 }
 
@@ -120,12 +159,17 @@ function commit(nextMessage) {
   state.moves += 1;
   message = nextMessage;
   state.won = checkWin();
+  state.lost = checkLost();
 
   if (state.won && !wasWon) {
     const finalSeconds = getElapsedSeconds();
     recordWin(finalSeconds);
     winModalOpen = true;
     message = `Gratulálok, megnyerted ${state.moves} lépésből, ${formatTime(finalSeconds)} alatt!`;
+  } else if (state.lost) {
+    message = isTabloMode()
+      ? "Nincs több összevonható azonos értékű halom. Ez a leosztás elakadt."
+      : nextMessage;
   }
 
   selected = null;
@@ -152,24 +196,29 @@ function loadGame() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed.tableau || !parsed.stock || !parsed.foundations) return null;
     parsed.mode = normalizeMode(parsed.mode || loadModePreference());
-    parsed.foundations = normalizeFoundations(parsed.foundations, parsed.mode);
+    if (!Array.isArray(parsed.tableau) || !Array.isArray(parsed.stock)) return null;
+    if (parsed.mode === "classic" && (!parsed.foundations || !Array.isArray(parsed.waste))) return null;
     parsed.startedAt = Date.now();
     parsed.history = Array.isArray(parsed.history)
-      ? parsed.history.map((entry) => ({
-          ...entry,
-          mode: normalizeMode(entry.mode || parsed.mode),
-          foundations: normalizeFoundations(entry.foundations || {}, normalizeMode(entry.mode || parsed.mode)),
-        }))
+      ? parsed.history.filter((entry) => entry && Array.isArray(entry.tableau) && Array.isArray(entry.stock))
       : [];
+    parsed.waste = Array.isArray(parsed.waste) ? parsed.waste : [];
+    parsed.foundations = parsed.mode === "classic"
+      ? normalizeClassicFoundations(parsed.foundations)
+      : {};
     parsed.won = Boolean(parsed.won);
+    parsed.lost = Boolean(parsed.lost);
     parsed.createdAt = parsed.createdAt || Date.now();
     parsed.gameId = parsed.gameId || `${parsed.createdAt}-${parsed.mode}-${Math.random().toString(36).slice(2, 10)}`;
     return parsed;
   } catch {
     return null;
   }
+}
+
+function normalizeClassicFoundations(foundations) {
+  return Object.fromEntries(SUITS.map((suit) => [suit.id, Array.isArray(foundations?.[suit.id]) ? foundations[suit.id] : []]));
 }
 
 function normalizeLeaderboard(entries) {
@@ -248,7 +297,7 @@ function recordWin(finalSeconds) {
   if (playerStats.completedGameIds[gameId]) return;
 
   const wonAt = new Date().toISOString();
-  playerStats.completedGameIds[gameId] = { wonAt, moves: state.moves, seconds: finalSeconds };
+  playerStats.completedGameIds[gameId] = { wonAt, moves: state.moves, seconds: finalSeconds, mode: getCurrentMode() };
   playerStats.gamesWon += 1;
   playerStats.currentStreak += 1;
   playerStats.bestStreak = Math.max(playerStats.bestStreak || 0, playerStats.currentStreak);
@@ -328,82 +377,32 @@ function getCurrentMode() {
   return normalizeMode(state?.mode || DEFAULT_MODE);
 }
 
-function isTowerMode(mode = getCurrentMode()) {
-  return normalizeMode(mode) === "tower";
-}
-
 function getModeMeta(mode = getCurrentMode()) {
   return MODES[normalizeMode(mode)];
 }
 
-function getFoundationDirections(mode = getCurrentMode()) {
-  return isTowerMode(mode) ? ["up", "down"] : ["up"];
+function isTabloMode(mode = getCurrentMode()) {
+  return normalizeMode(mode) === "tablo";
 }
 
-function foundationKey(suitId, direction = "up") {
-  return `${suitId}-${direction}`;
-}
-
-function foundationSlots(mode = getCurrentMode()) {
-  return SUITS.flatMap((suit) => getFoundationDirections(mode).map((direction) => ({
-    suit,
-    suitId: suit.id,
-    direction,
-    key: foundationKey(suit.id, direction),
-  })));
-}
-
-function createEmptyFoundations(mode = getCurrentMode()) {
-  return Object.fromEntries(foundationSlots(mode).map((slot) => [slot.key, []]));
-}
-
-function normalizeFoundations(foundations, mode = getCurrentMode()) {
-  const empty = createEmptyFoundations(mode);
-  for (const slot of foundationSlots(mode)) {
-    const modernPile = foundations?.[slot.key];
-    const legacyPile = slot.direction === "up" ? foundations?.[slot.suitId] : null;
-    empty[slot.key] = Array.isArray(modernPile)
-      ? modernPile
-      : Array.isArray(legacyPile)
-        ? legacyPile
-        : [];
-  }
-  return empty;
-}
-
-function getFoundationPile(suitId, direction = "up") {
-  const key = foundationKey(suitId, direction);
-  if (!state.foundations[key]) state.foundations[key] = [];
-  return state.foundations[key];
-}
-
-function getFoundationCompletedCount(game = state) {
+function getClassicCompletedCount(game = state) {
   if (!game?.foundations) return 0;
-  return Object.values(game.foundations).reduce((sum, pile) => sum + (Array.isArray(pile) ? pile.length : 0), 0);
+  return SUITS.reduce((sum, suit) => sum + (Array.isArray(game.foundations[suit.id]) ? game.foundations[suit.id].length : 0), 0);
 }
 
-function getExpectedFoundationRankIndex(suitId, direction = "up") {
-  const pile = getFoundationPile(suitId, direction);
-  const rule = FOUNDATION_DIRECTIONS[direction];
-  return pile.length === 0
-    ? rule.startRankIndex
-    : pile[pile.length - 1].rankIndex + rule.step;
+function getTabloCompletedPileCount(game = state) {
+  if (!Array.isArray(game?.tableau)) return 0;
+  return game.tableau.filter((pile) => pile.length === 4 && isSameRankPile(pile)).length;
 }
 
-function isRankAllowedOnFoundation(rankIndex, direction = "up") {
-  if (!isTowerMode()) return true;
-  if (direction === "up") return rankIndex < ACE_INDEX;
-  if (direction === "down") return rankIndex > FOUNDATION_START;
-  return true;
+function getTabloGroupedCardCount(game = state) {
+  if (!Array.isArray(game?.tableau)) return 0;
+  return game.tableau.reduce((sum, pile) => sum + (isSameRankPile(pile) ? pile.length : 0), 0);
 }
 
-function getExpectedFoundationLabel(suitId, direction = "up") {
-  const expected = getExpectedFoundationRankIndex(suitId, direction);
-  return expected >= 0 && expected < RANKS.length && isRankAllowedOnFoundation(expected, direction)
-    ? RANKS[expected]
-    : "kész";
+function isSameRankPile(pile) {
+  return Array.isArray(pile) && pile.length > 0 && pile.every((card) => card.rankIndex === pile[0].rankIndex);
 }
-
 
 function canPlaceOnTableau(movingCard, targetCard) {
   if (!targetCard) return movingCard.rankIndex === ACE_INDEX;
@@ -421,13 +420,12 @@ function canMoveStack(stack) {
   return true;
 }
 
-function canPlaceOnFoundation(card, suitId = card.suit, direction = "up") {
-  if (card.suit !== suitId) return false;
-  const expectedRank = getExpectedFoundationRankIndex(suitId, direction);
-  return expectedRank >= 0
-    && expectedRank < RANKS.length
-    && isRankAllowedOnFoundation(expectedRank, direction)
-    && card.rankIndex === expectedRank;
+function canPlaceOnFoundation(card) {
+  const foundation = state.foundations[card.suit];
+  const expectedRank = foundation.length === 0
+    ? FOUNDATION_START
+    : foundation[foundation.length - 1].rankIndex + 1;
+  return card.rankIndex === expectedRank;
 }
 
 function flipTopIfNeeded(column) {
@@ -437,7 +435,12 @@ function flipTopIfNeeded(column) {
 }
 
 function drawFromStock() {
-  if (state.won) return;
+  if (state.won || state.lost) return;
+  if (isTabloMode()) {
+    fillFirstEmptyTabloSlot();
+    return;
+  }
+
   selected = null;
 
   if (state.stock.length === 0) {
@@ -458,6 +461,21 @@ function drawFromStock() {
   commit("Húztál egy lapot.");
 }
 
+function fillFirstEmptyTabloSlot() {
+  const emptyIndex = state.tableau.findIndex((pile) => pile.length === 0);
+  if (emptyIndex === -1) {
+    showMessage("Most nincs üres hely. Előbb vonj össze két azonos értékű halmot.");
+    return;
+  }
+  if (!state.stock.length) {
+    showMessage("A húzópakli elfogyott.");
+    return;
+  }
+  saveHistory();
+  refillTabloSlot(emptyIndex);
+  commit("Feltöltöttél egy üres tablóhelyet.");
+}
+
 function undoMove() {
   const previous = state.history.pop();
   if (!previous) {
@@ -472,6 +490,10 @@ function undoMove() {
     elapsedBeforeLoad: elapsed,
     startedAt: Date.now(),
   };
+  state.mode = normalizeMode(state.mode || DEFAULT_MODE);
+  state.waste = Array.isArray(state.waste) ? state.waste : [];
+  state.foundations = state.mode === "classic" ? normalizeClassicFoundations(state.foundations) : {};
+  state.lost = false;
   winModalOpen = false;
   message = "Visszavontad az előző lépést.";
   selected = null;
@@ -489,7 +511,9 @@ function restartGame(mode = getCurrentMode(), askConfirm = true) {
   recordGameStarted();
   selected = null;
   winModalOpen = false;
-  message = `${getModeMeta(nextMode).name} indult. Sok sikert!`;
+  message = nextMode === "tablo"
+    ? "Király passziánsz indult. Keress azonos értékű halmokat!"
+    : "Új játék indult. Sok sikert!";
   saveGame();
   render();
 }
@@ -506,7 +530,7 @@ function changeMode(mode) {
 }
 
 function selectFromTableau(columnIndex, cardIndex) {
-  if (state.won) return;
+  if (state.won || state.lost || isTabloMode()) return;
   const column = state.tableau[columnIndex];
   const stack = column.slice(cardIndex);
   if (!stack[0]?.faceUp) return;
@@ -519,49 +543,133 @@ function selectFromTableau(columnIndex, cardIndex) {
   showMessage(`${cardName(stack[0])} kijelölve${stack.length > 1 ? `, ${stack.length} lapos sorral` : ""}.`);
 }
 
+function handleTabloPileClick(pileIndex) {
+  if (state.won || state.lost || !isTabloMode()) return;
+  const pile = state.tableau[pileIndex];
+
+  if (!pile.length) {
+    showMessage(state.stock.length ? "Ez a hely most üres. Sikeres összevonás után automatikusan jön ide új lap." : "Ez a hely üres, a húzópakli pedig elfogyott.");
+    return;
+  }
+
+  if (!selected || selected.source !== "tablo") {
+    selectTabloPile(pileIndex);
+    return;
+  }
+
+  if (selected.pileIndex === pileIndex) {
+    clearSelection();
+    return;
+  }
+
+  mergeTabloPiles(selected.pileIndex, pileIndex);
+}
+
+function selectTabloPile(pileIndex) {
+  const pile = state.tableau[pileIndex];
+  if (!pile?.length) return;
+  selected = { source: "tablo", pileIndex, cards: pile.map((card) => card.id) };
+  const rank = RANKS[pile[0].rankIndex];
+  showMessage(`${rank} halom kijelölve (${pile.length}/4). Tedd rá egy másik ${rank} halomra.`);
+  render();
+}
+
+function canMergeTabloPiles(sourceIndex, targetIndex, game = state) {
+  if (sourceIndex === targetIndex) return false;
+  const source = game.tableau[sourceIndex];
+  const target = game.tableau[targetIndex];
+  if (!source?.length || !target?.length) return false;
+  if (!isSameRankPile(source) || !isSameRankPile(target)) return false;
+  if (source[0].rankIndex !== target[0].rankIndex) return false;
+  return source.length + target.length <= SUITS.length;
+}
+
+function hasValidTabloMerge(tableau = state.tableau) {
+  const game = { tableau };
+  for (let sourceIndex = 0; sourceIndex < tableau.length; sourceIndex += 1) {
+    for (let targetIndex = 0; targetIndex < tableau.length; targetIndex += 1) {
+      if (canMergeTabloPiles(sourceIndex, targetIndex, game)) return true;
+    }
+  }
+  return false;
+}
+
+function mergeTabloPiles(sourceIndex, targetIndex) {
+  if (!canMergeTabloPiles(sourceIndex, targetIndex)) {
+    const source = state.tableau[sourceIndex];
+    const target = state.tableau[targetIndex];
+    if (!target?.length) {
+      showMessage("Üres helyre nem lehet halmot tenni; oda csak a húzópakliból érkezik új lap.");
+    } else if (source?.[0]?.rankIndex !== target?.[0]?.rankIndex) {
+      showMessage("Csak azonos értékű halmokat lehet összevonni.");
+    } else {
+      showMessage("Ebbe a halomba már nem férne bele négy lapnál több.");
+    }
+    return;
+  }
+
+  saveHistory();
+  const source = state.tableau[sourceIndex].map((card) => ({ ...card, faceUp: true }));
+  const target = state.tableau[targetIndex].map((card) => ({ ...card, faceUp: true }));
+  const rankLabel = RANKS[source[0].rankIndex];
+  state.tableau[targetIndex] = [...target, ...source];
+  state.tableau[sourceIndex] = [];
+  const drew = refillTabloSlot(sourceIndex);
+  const targetSize = state.tableau[targetIndex].length;
+  commit(drew
+    ? `${rankLabel} halmokat összevontad (${targetSize}/4), az üres helyre új lap érkezett.`
+    : `${rankLabel} halmokat összevontad (${targetSize}/4). A húzópakli már üres.`);
+}
+
+function refillTabloSlot(index) {
+  if (state.tableau[index]?.length || !state.stock.length) return false;
+  const card = state.stock.pop();
+  state.tableau[index] = [{ ...card, faceUp: true }];
+  return true;
+}
+
 function selectFromWaste() {
-  if (state.won) return;
+  if (state.won || state.lost || isTabloMode()) return;
   const card = state.waste[state.waste.length - 1];
   if (!card) return;
   selected = { source: "waste", cards: [card.id] };
   showMessage(`${cardName(card)} kijelölve a dobópakliból.`);
 }
 
-function selectFromFoundation(suitId, direction = "up") {
-  if (state.won) return;
-  const key = foundationKey(suitId, direction);
-  const foundation = getFoundationPile(suitId, direction);
+function selectFromFoundation(suitId) {
+  if (state.won || state.lost || isTabloMode()) return;
+  const foundation = state.foundations[suitId];
   const card = foundation[foundation.length - 1];
   if (!card) return;
-  selected = { source: "foundation", suitId, direction, foundationKey: key, cards: [card.id] };
-  showMessage(`${cardName(card)} kijelölve a ${FOUNDATION_DIRECTIONS[direction].name.toLowerCase()} toronyból.`);
+  selected = { source: "foundation", suitId, cards: [card.id] };
+  showMessage(`${cardName(card)} kijelölve a gyűjtőpakliból.`);
 }
 
-function handleFoundationClick(suitId, direction = "up") {
-  if (state.won) return;
-  const key = foundationKey(suitId, direction);
+function handleFoundationClick(suitId) {
+  if (state.won || state.lost || isTabloMode()) return;
 
   if (selected) {
-    if (selected.source === "foundation" && selected.foundationKey === key) {
+    if (selected.source === "foundation" && selected.suitId === suitId) {
       clearSelection();
       return;
     }
-    moveToFoundation(suitId, direction);
+    moveToFoundation(suitId);
     return;
   }
 
-  selectFromFoundation(suitId, direction);
+  selectFromFoundation(suitId);
 }
 
 function getSelectedCards() {
   if (!selected) return [];
+  if (selected.source === "tablo") return state.tableau[selected.pileIndex] || [];
   if (selected.source === "waste") {
     const card = state.waste[state.waste.length - 1];
     return card ? [card] : [];
   }
   if (selected.source === "foundation") {
-    const pile = state.foundations[selected.foundationKey || foundationKey(selected.suitId, selected.direction || "up")];
-    const card = pile?.[pile.length - 1];
+    const pile = state.foundations[selected.suitId];
+    const card = pile[pile.length - 1];
     return card ? [card] : [];
   }
   return state.tableau[selected.columnIndex].slice(selected.cardIndex);
@@ -577,8 +685,7 @@ function removeSelectedCards() {
     return [state.waste.pop()];
   }
   if (selected.source === "foundation") {
-    const key = selected.foundationKey || foundationKey(selected.suitId, selected.direction || "up");
-    return [state.foundations[key].pop()];
+    return [state.foundations[selected.suitId].pop()];
   }
   const column = state.tableau[selected.columnIndex];
   const moving = column.splice(selected.cardIndex);
@@ -587,6 +694,10 @@ function removeSelectedCards() {
 }
 
 function moveToTableau(targetColumnIndex) {
+  if (isTabloMode()) {
+    handleTabloPileClick(targetColumnIndex);
+    return;
+  }
   if (!selected) {
     showMessage("Előbb jelölj ki egy felfordított lapot vagy sort.");
     return;
@@ -618,7 +729,7 @@ function moveToTableau(targetColumnIndex) {
   commit("Sikeres mozgatás az oszlopok között.");
 }
 
-function moveToFoundation(suitId, direction = "up") {
+function moveToFoundation(suitId) {
   if (!selected) {
     showMessage("Előbb jelölj ki egy lapot.");
     return;
@@ -633,23 +744,35 @@ function moveToFoundation(suitId, direction = "up") {
     showMessage(`${cardName(card)} csak a saját színének gyűjtőpaklijába kerülhet.`);
     return;
   }
-  if (!canPlaceOnFoundation(card, suitId, direction)) {
-    const expected = getExpectedFoundationLabel(suitId, direction);
-    const directionName = FOUNDATION_DIRECTIONS[direction].name.toLowerCase();
-    showMessage(expected === "kész"
-      ? `${suitMeta(suitId).name} ${directionName} tornya már zárt.`
-      : `Ide most ${suitMeta(suitId).name} ${expected} kellene a ${directionName} toronyba.`);
+  if (!canPlaceOnFoundation(card)) {
+    const expected = state.foundations[suitId].length === 0
+      ? RANKS[FOUNDATION_START]
+      : RANKS[state.foundations[suitId][state.foundations[suitId].length - 1].rankIndex + 1];
+    showMessage(`Ide most ${suitMeta(suitId).name} ${expected} kellene.`);
     return;
   }
 
   saveHistory();
   const [removed] = removeSelectedCards();
-  getFoundationPile(suitId, direction).push({ ...removed, faceUp: true });
-  commit(`${cardName(card)} a ${FOUNDATION_DIRECTIONS[direction].name.toLowerCase()} toronyba került.`);
+  state.foundations[suitId].push({ ...removed, faceUp: true });
+  commit(`${cardName(card)} a gyűjtőpakliba került.`);
 }
 
 function checkWin() {
-  return getFoundationCompletedCount() === SUITS.length * RANKS.length;
+  if (isTabloMode()) {
+    const piles = state.tableau;
+    const completeRanks = new Set(piles.filter((pile) => pile.length === SUITS.length && isSameRankPile(pile)).map((pile) => pile[0].rankIndex));
+    return state.stock.length === 0
+      && piles.length === RANKS.length
+      && piles.every((pile) => pile.length === SUITS.length && isSameRankPile(pile))
+      && completeRanks.size === RANKS.length;
+  }
+  return getClassicCompletedCount() === SUITS.length * RANKS.length;
+}
+
+function checkLost() {
+  if (!isTabloMode() || checkWin()) return false;
+  return !hasValidTabloMerge(state.tableau);
 }
 
 function showMessage(nextMessage) {
@@ -662,16 +785,20 @@ function isSelectedCard(card) {
 }
 
 function isValidTargetTableau(index) {
-  if (!selected) return false;
+  if (!selected || isTabloMode()) return false;
   const moving = getSelectedCards();
   const target = state.tableau[index];
   return moving.length > 0 && canMoveStack(moving) && canPlaceOnTableau(moving[0], target[target.length - 1]);
 }
 
-function isValidTargetFoundation(suitId, direction = "up") {
-  if (!selected) return false;
+function isValidTargetFoundation(suitId) {
+  if (!selected || isTabloMode()) return false;
   const moving = getSelectedCards();
-  return moving.length === 1 && moving[0].suit === suitId && canPlaceOnFoundation(moving[0], suitId, direction);
+  return moving.length === 1 && moving[0].suit === suitId && canPlaceOnFoundation(moving[0]);
+}
+
+function isValidTargetTabloPile(index) {
+  return selected?.source === "tablo" && canMergeTabloPiles(selected.pileIndex, index);
 }
 
 function renderCard(card, options = {}) {
@@ -729,35 +856,22 @@ function renderWaste() {
   `;
 }
 
-function renderFoundation(slot) {
-  const { suit, suitId, direction } = slot;
-  const pile = getFoundationPile(suitId, direction);
+function renderFoundation(suit) {
+  const pile = state.foundations[suit.id];
   const top = pile[pile.length - 1];
-  const highlight = isValidTargetFoundation(suitId, direction) ? "highlight" : "";
-  const directionRule = FOUNDATION_DIRECTIONS[direction];
-  const nextRank = getExpectedFoundationLabel(suitId, direction);
-  const startRank = RANKS[directionRule.startRankIndex];
+  const highlight = isValidTargetFoundation(suit.id) ? "highlight" : "";
+  const nextRank = pile.length < RANKS.length ? RANKS[pile.length] : "kész";
   return `
     <section>
-      <p class="pile-label">${suit.name} ${directionRule.icon} · ${nextRank}</p>
-      <div class="card-slot foundation-slot ${highlight}" onclick="handleFoundationClick('${suitId}', '${direction}')">
-        ${top ? renderCard(top) : `<span class="foundation-empty"><span class="suit-icon">${suit.icon}${directionRule.icon}</span><small>${suit.name}<br>${startRank}</small></span>`}
+      <p class="pile-label">${suit.name} · ${nextRank}</p>
+      <div class="card-slot foundation-slot ${highlight}" onclick="handleFoundationClick('${suit.id}')">
+        ${top ? renderCard(top) : `<span class="foundation-empty"><span class="suit-icon">${suit.icon}</span><small>${suit.name}<br>VII</small></span>`}
       </div>
     </section>
   `;
 }
 
-function renderFoundationArea() {
-  const mode = getCurrentMode();
-  const gridClass = isTowerMode(mode) ? "tower-foundations" : "classic-foundations";
-  return `
-    <section class="foundation-grid ${gridClass}" aria-label="Gyűjtőpaklik">
-      ${foundationSlots(mode).map(renderFoundation).join("")}
-    </section>
-  `;
-}
-
-function renderTableau() {
+function renderClassicTableau() {
   return `
     <section class="tableau" aria-label="Oszlopok">
       ${state.tableau.map((column, columnIndex) => {
@@ -778,21 +892,77 @@ function renderTableau() {
   `;
 }
 
+function renderTabloStock() {
+  const emptySlots = state.tableau.filter((pile) => pile.length === 0).length;
+  const canFill = emptySlots > 0 && state.stock.length > 0;
+  return `
+    <section class="tablo-stock-panel">
+      <div>
+        <p class="pile-label">Húzópakli</p>
+        <div class="tablo-stock-card ${state.stock.length ? "" : "is-empty"}" onclick="drawFromStock()">
+          ${state.stock.length ? renderCard({ faceUp: false }) : "Üres"}
+        </div>
+      </div>
+      <div class="tablo-rule-box">
+        <strong>Szabály</strong>
+        <span>Csak azonos értékű halom tehető egymásra. Egy halom legfeljebb 4 lapos lehet.</span>
+        <span>${emptySlots ? `Üres hely: ${emptySlots}` : "Nincs üres hely"} · Húzó: ${state.stock.length}</span>
+        ${canFill ? `<button class="btn" onclick="drawFromStock()">Üres hely feltöltése</button>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function renderTabloPile(pile, pileIndex) {
+  const selectedPile = selected?.source === "tablo" && selected.pileIndex === pileIndex;
+  const highlight = isValidTargetTabloPile(pileIndex) ? "highlight" : "";
+  const complete = pile.length === SUITS.length && isSameRankPile(pile);
+  const label = pile.length ? `${RANKS[pile[0].rankIndex]} · ${pile.length}/4` : "Üres";
+  const cards = pile.length
+    ? pile.map((card, cardIndex) => renderCard(card, { extraClass: cardIndex ? "tablo-stack-card" : "" })).join("")
+    : `<div class="column-empty-hint">Üres<br>${state.stock.length ? "új lap jön" : "pakli elfogyott"}</div>`;
+  return `
+    <div class="tablo-pile ${selectedPile ? "selected-pile" : ""} ${highlight} ${complete ? "complete" : ""}" onclick="handleTabloPileClick(${pileIndex})" aria-label="${pileIndex + 1}. tablóhely, ${label}">
+      <div class="tablo-pile-head">
+        <span>${pileIndex + 1}. hely</span>
+        <strong>${label}</strong>
+      </div>
+      <div class="tablo-pile-cards">
+        ${cards}
+      </div>
+    </div>
+  `;
+}
+
+function renderTabloBoard() {
+  return `
+    <section class="board tablo-board">
+      ${renderTabloStock()}
+      <section class="tablo-tableau" aria-label="Tabló">
+        ${state.tableau.map(renderTabloPile).join("")}
+      </section>
+    </section>
+  `;
+}
+
 function formatWinRate() {
   if (!playerStats.gamesStarted) return "0%";
   return `${Math.round((playerStats.gamesWon / playerStats.gamesStarted) * 100)}%`;
 }
 
 function renderStats() {
-  const completed = getFoundationCompletedCount();
+  const completed = isTabloMode() ? `${getTabloCompletedPileCount()}/8` : `${getClassicCompletedCount()}/32`;
+  const progressLabel = isTabloMode() ? "Négyes" : "Kész";
+  const stockLabel = isTabloMode() ? "Húzó" : "Nyert";
+  const stockValue = isTabloMode() ? state.stock.length : `${playerStats.gamesWon}/${playerStats.gamesStarted}`;
   const bestTime = playerStats.bestTime == null ? "–" : formatTime(playerStats.bestTime);
   const bestMoves = playerStats.bestMoves == null ? "–" : playerStats.bestMoves;
   return `
     <section class="stats" aria-label="Játékállapot">
       <div class="stat-card"><span class="stat-label">Lépés</span><span class="stat-value">${state.moves}</span></div>
       <div class="stat-card"><span class="stat-label">Idő</span><span class="stat-value" id="timer">${formatTime(getElapsedSeconds())}</span></div>
-      <div class="stat-card"><span class="stat-label">Kész</span><span class="stat-value">${completed}/32</span></div>
-      <div class="stat-card"><span class="stat-label">Nyert</span><span class="stat-value">${playerStats.gamesWon}/${playerStats.gamesStarted}</span></div>
+      <div class="stat-card"><span class="stat-label">${progressLabel}</span><span class="stat-value">${completed}</span></div>
+      <div class="stat-card"><span class="stat-label">${stockLabel}</span><span class="stat-value">${stockValue}</span></div>
       <div class="stat-card"><span class="stat-label">Arány</span><span class="stat-value">${formatWinRate()}</span></div>
       <div class="stat-card"><span class="stat-label">Legjobb</span><span class="stat-value">${bestTime} · ${bestMoves}</span></div>
     </section>
@@ -823,11 +993,14 @@ function renderLeaderboard() {
 
 function renderWinModal() {
   const open = state.won && winModalOpen;
+  const winText = isTabloMode()
+    ? "Minden érték külön négyes halomba került."
+    : "Az összes magyar kártya a gyűjtőpaklikba került.";
   return `
     <div class="modal-backdrop ${open ? "open" : ""}">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="win-title">
         <h2 id="win-title">Megnyerted! 🎉</h2>
-        <p>Az összes magyar kártya a gyűjtőpaklikba került. Lépések: <strong>${state.moves}</strong>, idő: <strong>${formatTime(getElapsedSeconds())}</strong>.</p>
+        <p>${winText} Lépések: <strong>${state.moves}</strong>, idő: <strong>${formatTime(getElapsedSeconds())}</strong>.</p>
         <p class="modal-small">Legjobb időd: <strong>${playerStats.bestTime == null ? "–" : formatTime(playerStats.bestTime)}</strong>, legkevesebb lépésed: <strong>${playerStats.bestMoves ?? "–"}</strong>, aktuális sorozat: <strong>${playerStats.currentStreak}</strong>.</p>
         <div class="modal-actions">
           <button class="btn" onclick="closeWinModal()">Bezárás</button>
@@ -852,11 +1025,26 @@ function renderInstallBanner() {
   `;
 }
 
+function renderClassicBoard() {
+  return `
+    <section class="board">
+      <div class="top-row classic-row">
+        ${renderStock()}
+        ${renderWaste()}
+        <section class="foundation-grid classic-foundations" aria-label="Gyűjtőpaklik">
+          ${SUITS.map(renderFoundation).join("")}
+        </section>
+      </div>
+      ${renderClassicTableau()}
+    </section>
+  `;
+}
+
 function render() {
   const mode = getCurrentMode();
   const modeMeta = getModeMeta(mode);
   app.innerHTML = `
-    <main class="app-shell">
+    <main class="app-shell ${isTabloMode(mode) ? "tablo-shell" : ""}">
       <header class="header">
         <div class="title-wrap">
           <h1>${modeMeta.name}</h1>
@@ -873,15 +1061,7 @@ function render() {
 
       ${renderInstallBanner()}
       ${renderStats()}
-
-      <section class="board">
-        <div class="top-row ${isTowerMode(mode) ? "tower-row" : "classic-row"}">
-          ${renderStock()}
-          ${renderWaste()}
-          ${renderFoundationArea()}
-        </div>
-        ${renderTableau()}
-      </section>
+      ${isTabloMode(mode) ? renderTabloBoard() : renderClassicBoard()}
 
       <p class="message" aria-live="polite">${escapeHtml(message)}</p>
       ${renderLeaderboard()}
@@ -934,6 +1114,7 @@ window.selectFromWaste = selectFromWaste;
 window.selectFromFoundation = selectFromFoundation;
 window.handleFoundationClick = handleFoundationClick;
 window.selectFromTableau = selectFromTableau;
+window.handleTabloPileClick = handleTabloPileClick;
 window.moveToTableau = moveToTableau;
 window.moveToFoundation = moveToFoundation;
 window.restartGame = restartGame;
@@ -945,7 +1126,7 @@ window.closeWinModal = closeWinModal;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js?v=torony", { updateViaCache: "none" })
+    navigator.serviceWorker.register("sw.js?v=tablo", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(() => {
         console.info("A service worker regisztráció nem sikerült. Helyi file:// megnyitásnál ez normális.");

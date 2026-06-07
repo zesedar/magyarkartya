@@ -1,7 +1,7 @@
 {
-  "name": "Magyar Passziánsz – Kétirányú torony",
+  "name": "Magyar Passziánsz – Király passziánsz",
   "short_name": "Passziánsz",
-  "description": "Magyar kártyás passziánsz és Kétirányú torony egyjátékos PWA-ként.",
+  "description": "Magyar kártyás passziánsz és Király/Tabló passziánsz egyjátékos PWA-ként.",
   "lang": "hu-HU",
   "start_url": ".",
   "scope": ".",

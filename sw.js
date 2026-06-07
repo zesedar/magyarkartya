@@ -1,9 +1,9 @@
-const CACHE_NAME = "magyar-passziansz-v8-ketiranyu-torony-20260607";
+const CACHE_NAME = "magyar-passziansz-v9-tablo-20260607";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=torony",
-  "./app.js?v=torony",
+  "./styles.css?v=tablo",
+  "./app.js?v=tablo",
   "./manifest.webmanifest",
   "./assets/icon-192.png",
   "./assets/icon-512.png",
