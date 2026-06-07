@@ -948,20 +948,32 @@ function renderFreeCell(card, cellIndex) {
   `;
 }
 
+function renderColumnDropZone(columnIndex, label = "Ide rak") {
+  const highlight = isOstromMode()
+    ? isValidTargetOstromTableau(columnIndex)
+    : isValidTargetClassicTableau(columnIndex);
+  return `
+    <button class="column-drop-zone ${highlight ? "highlight" : ""}" onclick="event.stopPropagation(); moveToTableau(${columnIndex})" aria-label="${columnIndex + 1}. oszlop célhely">
+      ${label}
+    </button>
+  `;
+}
+
 function renderClassicTableau() {
   return `
     <section class="tableau classic-tableau" aria-label="Oszlopok">
       ${state.tableau.map((column, columnIndex) => {
         const highlight = isValidTargetClassicTableau(columnIndex) ? "highlight" : "";
         const cards = column.length
-          ? column.map((card, cardIndex) => renderCard(card, {
+          ? `<div class="column-card-stack">${column.map((card, cardIndex) => renderCard(card, {
               extraClass: cardIndex ? "stack-card" : "",
               click: card.faceUp ? `onclick=\"event.stopPropagation(); selectFromTableau(${columnIndex}, ${cardIndex})\"` : "",
-            })).join("")
+            })).join("")}</div>`
           : `<div class="column-empty-hint">Üres<br>Ász</div>`;
         return `
           <div class="column ${highlight}" onclick="moveToTableau(${columnIndex})" aria-label="${columnIndex + 1}. oszlop">
             ${cards}
+            ${renderColumnDropZone(columnIndex)}
           </div>
         `;
       }).join("")}
@@ -975,14 +987,15 @@ function renderOstromTableau() {
       ${state.tableau.map((column, columnIndex) => {
         const highlight = isValidTargetOstromTableau(columnIndex) ? "highlight" : "";
         const cards = column.length
-          ? column.map((card, cardIndex) => renderCard(card, {
+          ? `<div class="column-card-stack ostrom-card-stack">${column.map((card, cardIndex) => renderCard(card, {
               extraClass: cardIndex ? "ostrom-stack-card" : "",
               click: `onclick=\"event.stopPropagation(); selectFromTableau(${columnIndex}, ${cardIndex})\"`,
-            })).join("")
+            })).join("")}</div>`
           : `<div class="column-empty-hint">Üres<br>Ász / Király</div>`;
         return `
           <div class="column ostrom-column ${highlight}" onclick="moveToTableau(${columnIndex})" aria-label="${columnIndex + 1}. ostrom oszlop">
             ${cards}
+            ${renderColumnDropZone(columnIndex)}
           </div>
         `;
       }).join("")}
@@ -1191,7 +1204,7 @@ window.closeWinModal = closeWinModal;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js?v=ostrom", { updateViaCache: "none" })
+    navigator.serviceWorker.register("sw.js?v=ostrom-dropzone", { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(() => {
         console.info("A service worker regisztráció nem sikerült. Helyi file:// megnyitásnál ez normális.");

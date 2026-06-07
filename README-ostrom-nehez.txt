@@ -13,3 +13,9 @@ Szabályok:
 - Több lapos sor csak akkor mozgatható, ha a szabad cellák és üres oszlopok alapján ténylegesen lenne hozzá elég mozgástér.
 
 A klasszikus Magyar Passziánsz mód megmaradt.
+
+
+2026-06-07 javítás:
+- Minden oszlop aljára külön „Ide rak” célhely került, ezért nem kell az utolsó lap alján vadászni a kattintható részt.
+- Ostrom módban a laposzlopok görgethető kártyarészt kaptak, így hosszabb oszlopnál is megmarad az alsó rakási hely.
+- A PWA cache verziója frissült.

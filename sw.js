@@ -1,9 +1,9 @@
-const CACHE_NAME = "magyar-passziansz-v10-ostrom-20260607";
+const CACHE_NAME = "magyar-passziansz-v11-ostrom-dropzone-20260607";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=ostrom",
-  "./app.js?v=ostrom",
+  "./styles.css?v=ostrom-dropzone",
+  "./app.js?v=ostrom-dropzone",
   "./manifest.webmanifest",
   "./assets/icon-192.png",
   "./assets/icon-512.png",

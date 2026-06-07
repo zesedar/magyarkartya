@@ -254,7 +254,40 @@ button.card-slot:disabled {
   background: rgba(0,0,0,0.10);
   padding: 7px;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
   transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.column-card-stack {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.column-drop-zone {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 12px;
+  border: 2px dashed rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.68);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 0.78rem;
+  flex: 0 0 auto;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.column-drop-zone:hover,
+.column-drop-zone:focus-visible,
+.column-drop-zone.highlight {
+  border-color: var(--gold);
+  background: rgba(242,193,78,0.13);
+  color: var(--text);
+  outline: none;
 }
 
 .column.highlight {
@@ -264,6 +297,7 @@ button.card-slot:disabled {
 
 .column-empty-hint {
   width: 100%;
+  flex: 1 1 auto;
   aspect-ratio: 363 / 585;
   min-height: 128px;
   border-radius: var(--radius);
@@ -508,6 +542,14 @@ button.card-slot:disabled {
     min-height: min(64vh, 380px);
     border-radius: 10px;
     padding: 2px;
+    gap: 3px;
+  }
+
+  .column-drop-zone {
+    min-height: 30px;
+    border-width: 1px;
+    border-radius: 8px;
+    font-size: 0.58rem;
   }
 
   .card {
@@ -927,6 +969,14 @@ button.card-slot:disabled {
   min-height: 430px;
 }
 
+.ostrom-card-stack {
+  max-height: min(56vh, 390px);
+  overflow-y: auto;
+  padding-right: 2px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
 .ostrom-stack-card {
   margin-top: clamp(-86px, -5.2vw, -49px);
 }
@@ -966,6 +1016,10 @@ button.card-slot:disabled {
     min-height: min(42vh, 250px);
     border-radius: 10px;
     padding: 2px;
+  }
+
+  .ostrom-card-stack {
+    max-height: min(34vh, 200px);
   }
 
   .ostrom-stack-card {
